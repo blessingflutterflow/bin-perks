@@ -1,4 +1,4 @@
-package com.example.bin_perks
+package com.nosh.bin_perks
 
 import io.flutter.embedding.android.FlutterActivity
 

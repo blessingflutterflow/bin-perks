@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../theme/app_colors.dart';
-import 'merchant_scan_screen.dart';
+import 'package:geolocator/geolocator.dart';
 
 class DiscoveryScreen extends StatefulWidget {
   const DiscoveryScreen({super.key});
@@ -14,6 +14,8 @@ class DiscoveryScreen extends StatefulWidget {
 
 class _DiscoveryScreenState extends State<DiscoveryScreen> {
   int _selectedCategory = 0;
+  String? _currentAddress;
+  bool _isLoadingLocation = false;
 
   final List<String> _categories = [
     'All Nearby',
@@ -101,14 +103,18 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
           // ── Scrollable content ──────────────────────────────────────
           CustomScrollView(
             slivers: [
+              // Location picker
               SliverToBoxAdapter(
-                child: SizedBox(height: topPad + 72),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, 0),
+                  child: _buildLocationPicker(),
+                ),
               ),
 
               // Editorial header
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                  padding: const EdgeInsets.fromLTRB(20, 28, 20, 4),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -213,34 +219,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
             ],
           ),
 
-          // ── Glass top app bar ────────────────────────────────────────
-          _GlassAppBar(
-            topPad: topPad,
-            trailing: _AvatarBadge(),
-            actions: [
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const MerchantScanScreen()),
-                ),
-                child: Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(9999),
-                  ),
-                  child: Icon(
-                    PhosphorIcons.qrCode(),
-                    color: AppColors.primary,
-                    size: 22,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
           // ── Map FAB ──────────────────────────────────────────────────
           Positioned(
             bottom: 100,
@@ -253,6 +231,141 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         ],
       ),
     );
+  }
+
+  // ── Location picker ───────────────────────────────────────────
+  Widget _buildLocationPicker() {
+    return GestureDetector(
+      onTap: _isLoadingLocation ? null : _getCurrentLocation,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: AppColors.outlineVariant.withOpacity(0.25),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.primaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
+                color: AppColors.primary,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Location',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.onSecondaryContainer,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  if (_isLoadingLocation)
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Getting location...',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.onSurface,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Text(
+                      _currentAddress ?? 'Tap to detect your location',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.onSurface,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+            Icon(
+              PhosphorIcons.caretDown(),
+              color: AppColors.onSecondaryContainer,
+              size: 16,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isLoadingLocation = true);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _currentAddress = 'Location services disabled';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _currentAddress = 'Location permission denied';
+            _isLoadingLocation = false;
+          });
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _currentAddress = 'Location permission permanently denied';
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      setState(() {
+        _currentAddress =
+            '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+        _isLoadingLocation = false;
+      });
+    } catch (e) {
+      setState(() {
+        _currentAddress = 'Failed to get location';
+        _isLoadingLocation = false;
+      });
+    }
   }
 }
 
@@ -377,72 +490,8 @@ class _BusinessCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Shared widgets (used across screens via import)
+// Shared widgets
 // ─────────────────────────────────────────────────────────────────
-
-class _GlassAppBar extends StatelessWidget {
-  final double topPad;
-  final Widget? trailing;
-  final List<Widget> actions;
-  final String title;
-
-  const _GlassAppBar({
-    required this.topPad,
-    this.trailing,
-    this.actions = const [],
-    this.title = 'Bin Perks',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            color: AppColors.surface.withOpacity(0.88),
-            padding: EdgeInsets.only(top: topPad, left: 20, right: 20),
-            height: topPad + 64,
-            child: Row(
-              children: [
-                Icon(PhosphorIcons.list(), color: AppColors.primary, size: 28),
-                const SizedBox(width: 10),
-                Text(
-                  title,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const Spacer(),
-                ...actions,
-                if (actions.isNotEmpty) const SizedBox(width: 10),
-                if (trailing != null) trailing!,
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AvatarBadge extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 20,
-      backgroundColor: AppColors.surfaceContainerHigh,
-      backgroundImage:
-          const NetworkImage('https://picsum.photos/seed/avatar99/100/100'),
-    );
-  }
-}
 
 class _PrimaryFAB extends StatelessWidget {
   final IconData icon;

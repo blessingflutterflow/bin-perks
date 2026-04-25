@@ -1,9 +1,28 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../theme/app_colors.dart';
 import 'merchant_scan_screen.dart';
+
+class _ReviewBusiness {
+  final String name;
+  final String category;
+  final IconData icon;
+  final int filledStamps;
+  final int totalStamps;
+  final int streakDays;
+  final int streakMax;
+
+  _ReviewBusiness({
+    required this.name,
+    required this.category,
+    required this.icon,
+    required this.filledStamps,
+    this.totalStamps = 10,
+    required this.streakDays,
+    this.streakMax = 10,
+  });
+}
 
 class StreakReviewScreen extends StatefulWidget {
   const StreakReviewScreen({super.key});
@@ -13,19 +32,73 @@ class StreakReviewScreen extends StatefulWidget {
 }
 
 class _StreakReviewScreenState extends State<StreakReviewScreen> {
-  int? _selectedEmoji;
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
 
-  // Stamp progress – 7 of 10 completed
-  static const int _totalStamps = 10;
-  static const int _filledStamps = 7;
-
-  final List<Map<String, String>> _emojis = const [
-    {'glyph': '😡', 'label': 'Awful'},
-    {'glyph': '😕', 'label': 'Bad'},
-    {'glyph': '😐', 'label': 'OK'},
-    {'glyph': '🙂', 'label': 'Good'},
-    {'glyph': '😍', 'label': 'Loved it!'},
+  final List<_ReviewBusiness> _businesses = [
+    _ReviewBusiness(
+      name: 'The Daily Grind',
+      category: 'Artisan Coffee',
+      icon: PhosphorIcons.coffee(),
+      filledStamps: 7,
+      streakDays: 7,
+    ),
+    _ReviewBusiness(
+      name: "Joe's Barbershop",
+      category: 'Grooming',
+      icon: PhosphorIcons.scissors(),
+      filledStamps: 3,
+      streakDays: 2,
+    ),
+    _ReviewBusiness(
+      name: 'Green Leaf Bistro',
+      category: 'Health Food',
+      icon: PhosphorIcons.carrot(),
+      filledStamps: 5,
+      streakDays: 4,
+    ),
+    _ReviewBusiness(
+      name: 'Velvet & Vine',
+      category: 'Boutique Fashion',
+      icon: PhosphorIcons.tShirt(),
+      filledStamps: 1,
+      streakDays: 0,
+    ),
+    _ReviewBusiness(
+      name: 'Rustic Crust',
+      category: 'Italian Kitchen',
+      icon: PhosphorIcons.pizza(),
+      filledStamps: 8,
+      streakDays: 6,
+    ),
+    _ReviewBusiness(
+      name: 'Iron Strong',
+      category: 'Fitness',
+      icon: PhosphorIcons.barbell(),
+      filledStamps: 4,
+      streakDays: 3,
+    ),
+    _ReviewBusiness(
+      name: 'Bloom & Blossom',
+      category: 'Floral Design',
+      icon: PhosphorIcons.flower(),
+      filledStamps: 2,
+      streakDays: 1,
+    ),
+    _ReviewBusiness(
+      name: 'Zen Spa',
+      category: 'Wellness',
+      icon: PhosphorIcons.drop(),
+      filledStamps: 6,
+      streakDays: 5,
+    ),
   ];
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,116 +108,45 @@ class _StreakReviewScreenState extends State<StreakReviewScreen> {
       backgroundColor: AppColors.surface,
       body: Stack(
         children: [
-          // ── Scrollable content ──────────────────────────────────────
-          CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(child: SizedBox(height: topPad + 72)),
-
-              // Hero header
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'CURRENT STATUS',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.4,
-                          color: AppColors.onSecondaryContainer,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        "You're on fire!",
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 38,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.6,
-                          height: 1.1,
-                          color: AppColors.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ── Main card ─────────────────────────────────────────────
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                sliver: SliverToBoxAdapter(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceContainerLowest,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: AppColors.outlineVariant.withOpacity(0.18),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.onSurface.withOpacity(0.04),
-                          blurRadius: 32,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(28),
-                    child: Column(
-                      children: [
-                        _buildGoalProgress(),
-                        const SizedBox(height: 32),
-                        _buildStreakBar(),
-                        const SizedBox(height: 32),
-                        // Tonal divider – no hard lines
-                        Container(
-                          height: 1,
-                          color: AppColors.surfaceContainerHigh,
-                        ),
-                        const SizedBox(height: 32),
-                        _buildEmojiReview(),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // ── Secondary CTA cards ───────────────────────────────────
-              SliverPadding(
-                padding:
-                    const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                sliver: SliverToBoxAdapter(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _SecondaryCard(
-                          icon: PhosphorIcons.gift(PhosphorIconsStyle.fill),
-                          title: 'Next Perk',
-                          subtitle: '3 more bins to unlock free coffee',
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _SecondaryCard(
-                          icon: PhosphorIcons.mapTrifold(
-                              PhosphorIconsStyle.fill),
-                          title: 'Find Bins',
-                          subtitle: 'Explore locations near you',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 120)),
-            ],
+          // ── Horizontal swipe pages ────────────────────────────────
+          PageView.builder(
+            controller: _pageController,
+            scrollDirection: Axis.horizontal,
+            itemCount: _businesses.length,
+            onPageChanged: (index) => setState(() => _currentPage = index),
+            itemBuilder: (context, index) {
+              return _BusinessReviewPage(
+                business: _businesses[index],
+                topPad: topPad,
+              );
+            },
           ),
 
-          // ── Glass top app bar ────────────────────────────────────────
-          _GlassAppBar(topPad: topPad, trailing: _AvatarBadge()),
+          // ── Page indicator dots ───────────────────────────────────
+          Positioned(
+            bottom: 110,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(_businesses.length, (index) {
+                final active = index == _currentPage;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  width: active ? 24 : 8,
+                  height: 8,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: active
+                        ? AppColors.primary
+                        : AppColors.outlineVariant,
+                    borderRadius: BorderRadius.circular(9999),
+                  ),
+                );
+              }),
+            ),
+          ),
 
           // ── Scan FAB ─────────────────────────────────────────────────
           Positioned(
@@ -186,9 +188,153 @@ class _StreakReviewScreenState extends State<StreakReviewScreen> {
       ),
     );
   }
+}
 
-  // ── Goal progress (10-stamp grid) ──────────────────────────────
-  Widget _buildGoalProgress() {
+// ─────────────────────────────────────────────────────────────────
+// Individual business review page (one swipe card)
+// ─────────────────────────────────────────────────────────────────
+
+class _BusinessReviewPage extends StatefulWidget {
+  final _ReviewBusiness business;
+  final double topPad;
+
+  const _BusinessReviewPage({
+    required this.business,
+    required this.topPad,
+  });
+
+  @override
+  State<_BusinessReviewPage> createState() => _BusinessReviewPageState();
+}
+
+class _BusinessReviewPageState extends State<_BusinessReviewPage> {
+  int? _selectedEmoji;
+
+  final List<Map<String, String>> _emojis = const [
+    {'glyph': '😡', 'label': 'Awful'},
+    {'glyph': '😕', 'label': 'Bad'},
+    {'glyph': '😐', 'label': 'OK'},
+    {'glyph': '🙂', 'label': 'Good'},
+    {'glyph': '😍', 'label': 'Loved it!'},
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final b = widget.business;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.only(top: widget.topPad + 24),
+      child: Column(
+        children: [
+          // ── Business logo header ──────────────────────────────
+          _buildBusinessHeader(b),
+
+          const SizedBox(height: 32),
+
+          // ── Main card ─────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: AppColors.outlineVariant.withOpacity(0.18),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.onSurface.withOpacity(0.04),
+                    blurRadius: 32,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                children: [
+                  _buildStampGrid(b),
+                  const SizedBox(height: 32),
+                  _buildStreakBar(b),
+                  const SizedBox(height: 32),
+                  Container(
+                    height: 1,
+                    color: AppColors.surfaceContainerHigh,
+                  ),
+                  const SizedBox(height: 32),
+                  _buildEmojiReview(),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // ── Rewards ─────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: _buildRewards(),
+          ),
+
+          const SizedBox(height: 160),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBusinessHeader(_ReviewBusiness b) {
+    return Column(
+      children: [
+        Container(
+          width: 120,
+          height: 120,
+          decoration: BoxDecoration(
+            color: AppColors.primary,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withOpacity(0.25),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  b.icon,
+                  color: AppColors.onPrimary,
+                  size: 40,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  b.name.split(' ').first.toUpperCase(),
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                    color: AppColors.onPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          b.name,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            color: AppColors.onSurface,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStampGrid(_ReviewBusiness b) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -206,7 +352,7 @@ class _StreakReviewScreenState extends State<StreakReviewScreen> {
               ),
             ),
             Text(
-              '$_filledStamps/$_totalStamps',
+              '${b.filledStamps}/${b.totalStamps}',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
@@ -225,39 +371,30 @@ class _StreakReviewScreenState extends State<StreakReviewScreen> {
             mainAxisSpacing: 12,
             childAspectRatio: 1,
           ),
-          itemCount: _totalStamps,
+          itemCount: b.totalStamps,
           itemBuilder: (context, index) {
-            final filled = index < _filledStamps;
-            final isReward = index == _totalStamps - 1;
+            final filled = index < b.filledStamps;
             return AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               decoration: BoxDecoration(
-                color: filled
-                    ? AppColors.primaryContainer
-                    : AppColors.secondaryContainer,
+                color: filled ? AppColors.primary : Colors.transparent,
                 shape: BoxShape.circle,
+                border: Border.all(
+                  color: filled ? AppColors.primary : AppColors.outline,
+                  width: 2,
+                ),
               ),
               child: Center(
-                child: filled
-                    ? Icon(
-                        PhosphorIcons.check(PhosphorIconsStyle.bold),
-                        color: AppColors.onPrimaryContainer,
-                        size: 20,
-                      )
-                    : isReward
-                        ? Icon(
-                            PhosphorIcons.medal(PhosphorIconsStyle.fill),
-                            color: AppColors.onSecondaryContainer,
-                            size: 20,
-                          )
-                        : Text(
-                            '${index + 1}',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.onSecondaryContainer,
-                            ),
-                          ),
+                child: Text(
+                  '${index + 1}',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: filled
+                        ? AppColors.onPrimary
+                        : AppColors.onSecondaryContainer,
+                  ),
+                ),
               ),
             );
           },
@@ -266,72 +403,78 @@ class _StreakReviewScreenState extends State<StreakReviewScreen> {
     );
   }
 
-  // ── Streak bar ──────────────────────────────────────────────────
-  Widget _buildStreakBar() {
+  Widget _buildStreakBar(_ReviewBusiness b) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                Icon(
-                  PhosphorIcons.flame(PhosphorIconsStyle.fill),
-                  color: AppColors.primary,
-                  size: 28,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '7 Day Streak',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.onSurface,
-                  ),
-                ),
-              ],
-            ),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.errorContainer.withOpacity(0.45),
-                borderRadius: BorderRadius.circular(9999),
+            Text(
+              'Streak',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppColors.onSurface,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(PhosphorIcons.timer(), color: AppColors.error, size: 15),
-                  const SizedBox(width: 5),
-                  Text(
-                    'Expiring in 4h 20m',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.error,
+            ),
+            GestureDetector(
+              onTap: () {},
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.outline, width: 1.5),
+                ),
+                child: Center(
+                  child: Text(
+                    '?',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.onSecondaryContainer,
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(9999),
-          child: LinearProgressIndicator(
-            value: 0.7,
-            minHeight: 14,
-            backgroundColor: AppColors.secondaryContainer,
-            valueColor: const AlwaysStoppedAnimation<Color>(
-                AppColors.primaryContainer),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.secondaryContainer,
+            borderRadius: BorderRadius.circular(9999),
+          ),
+          child: Center(
+            child: Text(
+              '${b.streakDays}/${b.streakMax}',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppColors.onSurface,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          b.streakDays > 0
+              ? 'Keep visiting to maintain your streak!'
+              : 'No active streak — visit today to start one!',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.onSecondaryContainer,
           ),
         ),
       ],
     );
   }
 
-  // ── Emoji review ────────────────────────────────────────────────
   Widget _buildEmojiReview() {
     return Column(
       children: [
@@ -389,113 +532,38 @@ class _StreakReviewScreenState extends State<StreakReviewScreen> {
       ],
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────
-// Secondary CTA card
-// ─────────────────────────────────────────────────────────────────
-
-class _SecondaryCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const _SecondaryCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceContainer,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: AppColors.primary, size: 30),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              color: AppColors.onSurface,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            subtitle,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: AppColors.onSecondaryContainer,
-              height: 1.4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Shared glass app bar (local copy; extracted to widgets if needed)
-// ─────────────────────────────────────────────────────────────────
-
-class _GlassAppBar extends StatelessWidget {
-  final double topPad;
-  final Widget? trailing;
-
-  const _GlassAppBar({required this.topPad, this.trailing});
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: 0, left: 0, right: 0,
-      child: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            color: AppColors.surface.withOpacity(0.88),
-            padding: EdgeInsets.only(top: topPad, left: 20, right: 20),
-            height: topPad + 64,
-            child: Row(
-              children: [
-                Icon(PhosphorIcons.list(), color: AppColors.primary, size: 28),
-                const SizedBox(width: 10),
-                Text(
-                  'Bin Perks',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const Spacer(),
-                if (trailing != null) trailing!,
-              ],
-            ),
+  Widget _buildRewards() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          'Rewards',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: AppColors.onSurface,
           ),
         ),
-      ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: List.generate(5, (index) {
+            return Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.outline,
+                  width: 2,
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
     );
   }
 }
 
-class _AvatarBadge extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 20,
-      backgroundColor: AppColors.surfaceContainerHigh,
-      backgroundImage:
-          const NetworkImage('https://picsum.photos/seed/avatar99/100/100'),
-    );
-  }
-}

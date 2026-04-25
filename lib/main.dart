@@ -1,13 +1,17 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'theme/app_theme.dart';
 import 'screens/discovery_screen.dart';
 import 'screens/streak_review_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/auth/login_screen.dart';
 import 'widgets/bottom_nav_bar.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -26,7 +30,31 @@ class BinPerksApp extends StatelessWidget {
       title: 'Bin Perks',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      home: const AppShell(),
+      home: const AuthGate(),
+    );
+  }
+}
+
+// ── Auth gate ────────────────────────────────────────────────────
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasData) {
+          return const AppShell();
+        }
+        return const LoginScreen();
+      },
     );
   }
 }
