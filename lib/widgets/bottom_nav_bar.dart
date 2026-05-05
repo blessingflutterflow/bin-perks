@@ -2,7 +2,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_colors.dart';
+import '../theme/theme_provider.dart';
 
 class BinPerksBottomNav extends StatelessWidget {
   final int currentIndex;
@@ -16,16 +18,19 @@ class BinPerksBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.watch<ThemeProvider>().isDarkMode;
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
         child: Container(
           decoration: BoxDecoration(
-            color: AppColors.surface.withOpacity(0.88),
+            color: (isDark ? AppColors.darkSurface : AppColors.surface)
+                .withOpacity(0.88),
             boxShadow: [
               BoxShadow(
-                color: AppColors.onSurface.withOpacity(0.05),
+                color: (isDark ? AppColors.darkOnSurface : AppColors.onSurface)
+                    .withOpacity(0.05),
                 blurRadius: 24,
                 offset: const Offset(0, -4),
               ),
@@ -44,6 +49,7 @@ class BinPerksBottomNav extends StatelessWidget {
                     activeIcon: PhosphorIcons.compass(PhosphorIconsStyle.fill),
                     isActive: currentIndex == 0,
                     onTap: () => onTap(0),
+                    isDark: isDark,
                   ),
                   _NavItem(
                     label: 'Rewards',
@@ -51,6 +57,7 @@ class BinPerksBottomNav extends StatelessWidget {
                     activeIcon: PhosphorIcons.medal(PhosphorIconsStyle.fill),
                     isActive: currentIndex == 1,
                     onTap: () => onTap(1),
+                    isDark: isDark,
                   ),
                   _NavItem(
                     label: 'Profile',
@@ -58,6 +65,7 @@ class BinPerksBottomNav extends StatelessWidget {
                     activeIcon: PhosphorIcons.user(PhosphorIconsStyle.fill),
                     isActive: currentIndex == 2,
                     onTap: () => onTap(2),
+                    isDark: isDark,
                   ),
                 ],
               ),
@@ -75,6 +83,7 @@ class _NavItem extends StatelessWidget {
   final IconData activeIcon;
   final bool isActive;
   final VoidCallback onTap;
+  final bool isDark;
 
   const _NavItem({
     required this.label,
@@ -82,6 +91,7 @@ class _NavItem extends StatelessWidget {
     required this.activeIcon,
     required this.isActive,
     required this.onTap,
+    required this.isDark,
   });
 
   @override
@@ -108,7 +118,8 @@ class _NavItem extends StatelessWidget {
               isActive ? activeIcon : icon,
               color: isActive
                   ? AppColors.onPrimaryFixed
-                  : AppColors.onSurface.withOpacity(0.45),
+                  : (isDark ? AppColors.darkOnSurface : AppColors.onSurface)
+                        .withOpacity(0.45),
               size: 26,
             ),
             if (isActive) ...[

@@ -56,4 +56,14 @@ class AppColors {
   // Misc
   static const Color inversePrimary = Color(0xFFFFB3AD);
   static const Color surfaceTint = Color(0xFFC0001B);
+
+  // Dark theme colors
+  static const Color darkSurface = Color(0xFF1A1A1A);
+  static const Color darkSurfaceContainer = Color(0xFF2D2D2D);
+  static const Color darkSurfaceContainerHigh = Color(0xFF3D3D3D);
+  static const Color darkSurfaceContainerLow = Color(0xFF252525);
+  static const Color darkOnSurface = Color(0xFFF5F5F5);
+  static const Color darkOnSurfaceVariant = Color(0xFFB0B0B0);
+  static const Color darkOutline = Color(0xFF5A5A5A);
+  static const Color darkOutlineVariant = Color(0xFF404040);
 }

@@ -36,6 +36,41 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _forgotPassword() async {
+    final email = _emailCtrl.text.trim();
+    
+    if (email.isEmpty) {
+      setState(() => _error = 'Please enter your email address first.');
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Password reset link sent to $email',
+              style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: const Color(0xFF00875A),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() => _error = e.message ?? 'Failed to send reset email');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   @override
   void dispose() {
     _emailCtrl.dispose();
@@ -150,7 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Align(
                 alignment: Alignment.centerRight,
                 child: GestureDetector(
-                  onTap: () {},
+                  onTap: _forgotPassword,
                   child: Text(
                     'Forgot password?',
                     style: GoogleFonts.beVietnamPro(

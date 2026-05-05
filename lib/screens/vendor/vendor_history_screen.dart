@@ -1,0 +1,569 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:intl/intl.dart';
+import '../../theme/app_colors.dart';
+
+enum PeriodType { day, week, month, year }
+
+class VendorHistoryScreen extends StatefulWidget {
+  const VendorHistoryScreen({super.key});
+
+  @override
+  State<VendorHistoryScreen> createState() => _VendorHistoryScreenState();
+}
+
+class _VendorHistoryScreenState extends State<VendorHistoryScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  PeriodType _selectedPeriod = PeriodType.month;
+  DateTime _focusedDate = DateTime.now();
+  
+  // Year/Month selection
+  final List<int> _years = List.generate(5, (i) => DateTime.now().year - i);
+  late int _selectedYear;
+  late int _selectedMonth;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _selectedYear = _focusedDate.year;
+    _selectedMonth = _focusedDate.month;
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  DateTimeRange _getRange() {
+    switch (_selectedPeriod) {
+      case PeriodType.day:
+        final start = DateTime(_selectedYear, _selectedMonth, _focusedDate.day);
+        final end = start.add(const Duration(days: 1));
+        return DateTimeRange(start: start, end: end);
+      case PeriodType.week:
+        // Start of week (Monday)
+        final start = _focusedDate.subtract(Duration(days: _focusedDate.weekday - 1));
+        final cleanStart = DateTime(start.year, start.month, start.day);
+        final end = cleanStart.add(const Duration(days: 7));
+        return DateTimeRange(start: cleanStart, end: end);
+      case PeriodType.month:
+        final start = DateTime(_selectedYear, _selectedMonth, 1);
+        final end = DateTime(_selectedYear, _selectedMonth + 1, 1);
+        return DateTimeRange(start: start, end: end);
+      case PeriodType.year:
+        final start = DateTime(_selectedYear, 1, 1);
+        final end = DateTime(_selectedYear + 1, 1, 1);
+        return DateTimeRange(start: start, end: end);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.surface,
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        elevation: 0,
+        title: Text(
+          'History Archive',
+          style: GoogleFonts.plusJakartaSans(
+            fontWeight: FontWeight.w800,
+            color: AppColors.onSurface,
+          ),
+        ),
+        leading: IconButton(
+          icon: Icon(PhosphorIcons.arrowLeft(), color: AppColors.onSurface),
+          onPressed: () => Navigator.pop(context),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppColors.primary,
+          indicatorWeight: 3,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: AppColors.onSecondaryContainer,
+          labelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, fontSize: 14),
+          tabs: const [
+            Tab(text: 'All Activity'),
+            Tab(text: 'By Customer'),
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          _buildFilterBar(),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _ActivityTab(range: _getRange()),
+                _CustomerTab(range: _getRange()),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterBar() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.outlineVariant.withOpacity(0.3))),
+      ),
+      child: Column(
+        children: [
+          // Period Type Selector
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: PeriodType.values.map((p) {
+                final active = _selectedPeriod == p;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(p.name[0].toUpperCase() + p.name.substring(1)),
+                    selected: active,
+                    onSelected: (val) {
+                      if (val) setState(() => _selectedPeriod = p);
+                    },
+                    selectedColor: AppColors.primary,
+                    labelStyle: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: active ? Colors.white : AppColors.onSecondaryContainer,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Date Selector Row
+          Row(
+            children: [
+              // Year Selector
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<int>(
+                      value: _selectedYear,
+                      isExpanded: true,
+                      items: _years.map((y) => DropdownMenuItem(value: y, child: Text('$y'))).toList(),
+                      onChanged: (y) => setState(() => _selectedYear = y!),
+                      style: GoogleFonts.beVietnamPro(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.onSurface,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (_selectedPeriod != PeriodType.year) ...[
+                const SizedBox(width: 12),
+                // Month Selector
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: _selectedMonth,
+                        isExpanded: true,
+                        items: List.generate(12, (i) => i + 1).map((m) {
+                          final name = DateFormat('MMMM').format(DateTime(2022, m));
+                          return DropdownMenuItem(value: m, child: Text(name));
+                        }).toList(),
+                        onChanged: (m) => setState(() => _selectedMonth = m!),
+                        style: GoogleFonts.beVietnamPro(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.onSurface,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (_selectedPeriod == PeriodType.day) ...[
+                const SizedBox(width: 12),
+                IconButton(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _focusedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        _focusedDate = picked;
+                        _selectedYear = picked.year;
+                        _selectedMonth = picked.month;
+                      });
+                    }
+                  },
+                  icon: Icon(PhosphorIcons.calendar(), color: AppColors.primary),
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.primaryContainer,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActivityTab extends StatelessWidget {
+  final DateTimeRange range;
+  const _ActivityTab({required this.range});
+
+  @override
+  Widget build(BuildContext context) {
+    final vendorId = FirebaseAuth.instance.currentUser?.uid;
+    if (vendorId == null) return const SizedBox.shrink();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('stamps')
+          .where('vendorId', isEqualTo: vendorId)
+          .where('createdAt', isGreaterThanOrEqualTo: range.start)
+          .where('createdAt', isLessThan: range.end)
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, stampsSnap) {
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('redemptions')
+              .where('vendorId', isEqualTo: vendorId)
+              .where('redeemedAt', isGreaterThanOrEqualTo: range.start)
+              .where('redeemedAt', isLessThan: range.end)
+              .orderBy('redeemedAt', descending: true)
+              .snapshots(),
+          builder: (context, redeemSnap) {
+            if (stampsSnap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+            }
+
+            final items = <_HistoryItem>[];
+            for (final doc in stampsSnap.data?.docs ?? []) {
+              final d = doc.data() as Map<String, dynamic>;
+              items.add(_HistoryItem(
+                type: 'Stamp',
+                label: 'Stamp #${d['stampNumber'] ?? ''}',
+                customerName: d['customerName'],
+                customerId: d['customerId'],
+                ts: d['createdAt'] as Timestamp,
+                color: AppColors.primary,
+                icon: PhosphorIcons.stamp(PhosphorIconsStyle.fill),
+              ));
+            }
+            for (final doc in redeemSnap.data?.docs ?? []) {
+              final d = doc.data() as Map<String, dynamic>;
+              items.add(_HistoryItem(
+                type: 'Reward',
+                label: d['rewardDescription'] ?? 'Reward Redeemed',
+                customerName: d['customerName'],
+                customerId: d['customerId'],
+                ts: d['redeemedAt'] as Timestamp,
+                color: const Color(0xFF7C3AED),
+                icon: PhosphorIcons.gift(PhosphorIconsStyle.fill),
+              ));
+            }
+
+            items.sort((a, b) => b.ts.compareTo(a.ts));
+
+            if (items.isEmpty) {
+              return _emptyState('No activity found for this period');
+            }
+
+            // Group by date
+            final grouped = <String, List<_HistoryItem>>{};
+            for (final item in items) {
+              final dateStr = DateFormat('EEEE, d MMMM').format(item.ts.toDate());
+              grouped.putIfAbsent(dateStr, () => []).add(item);
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: grouped.length,
+              itemBuilder: (context, index) {
+                final date = grouped.keys.elementAt(index);
+                final dayItems = grouped[date]!;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 16, 0, 12),
+                      child: Text(
+                        date.toUpperCase(),
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                          color: AppColors.onSecondaryContainer.withOpacity(0.6),
+                        ),
+                      ),
+                    ),
+                    ...dayItems.map((item) => _buildItemTile(item)),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildItemTile(_HistoryItem item) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.outlineVariant.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: item.color.withOpacity(0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(item.icon, color: item.color, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.label,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: AppColors.onSurface,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                FutureBuilder<String?>(
+                  future: item.customerName != null
+                      ? Future.value(item.customerName)
+                      : _getCustomerName(item.customerId),
+                  builder: (context, snap) {
+                    if (snap.connectionState == ConnectionState.waiting &&
+                        item.customerName == null) {
+                      return Text(
+                        'Loading name...',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                          color:
+                              AppColors.onSecondaryContainer.withOpacity(0.5),
+                        ),
+                      );
+                    }
+                    return Text(
+                      snap.data ?? item.customerName ?? 'Anonymous Customer',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.onSecondaryContainer,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          Text(
+            DateFormat('HH:mm').format(item.ts.toDate()),
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.onSecondaryContainer.withOpacity(0.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyState(String msg) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(PhosphorIcons.archive(PhosphorIconsStyle.light), size: 64, color: AppColors.outline),
+            const SizedBox(height: 16),
+            Text(
+              msg,
+              style: GoogleFonts.beVietnamPro(color: AppColors.onSecondaryContainer),
+            ),
+          ],
+        ),
+      );
+}
+
+class _CustomerTab extends StatelessWidget {
+  final DateTimeRange range;
+  const _CustomerTab({required this.range});
+
+  @override
+  Widget build(BuildContext context) {
+    final vendorId = FirebaseAuth.instance.currentUser?.uid;
+    if (vendorId == null) return const SizedBox.shrink();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('stamps')
+          .where('vendorId', isEqualTo: vendorId)
+          .where('createdAt', isGreaterThanOrEqualTo: range.start)
+          .where('createdAt', isLessThan: range.end)
+          .snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+        
+        final docs = snap.data!.docs;
+        final stats = <String, int>{};
+        final names = <String, String?>{};
+
+        for (final doc in docs) {
+          final d = doc.data() as Map<String, dynamic>;
+          final id = d['customerId'] as String;
+          final name = d['customerName'] as String?;
+          
+          stats[id] = (stats[id] ?? 0) + 1;
+          if (name != null) names[id] = name;
+        }
+
+        final sortedIds = stats.keys.toList()..sort((a, b) => stats[b]!.compareTo(stats[a]!));
+
+        if (sortedIds.isEmpty) {
+          return const Center(child: Text('No customer data for this period'));
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: sortedIds.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final id = sortedIds[index];
+            final count = stats[id]!;
+            final embeddedName = names[id];
+
+            return FutureBuilder<String?>(
+              future: embeddedName != null
+                  ? Future.value(embeddedName)
+                  : _getCustomerName(id),
+              builder: (context, nameSnap) {
+                if (nameSnap.connectionState == ConnectionState.waiting &&
+                    embeddedName == null) {
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Text('Loading customer...'),
+                  );
+                }
+                final name = nameSnap.data ?? embeddedName ?? 'Anonymous Customer';
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceContainerLowest,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.outlineVariant.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: AppColors.primaryContainer,
+                        child: Text(name[0].toUpperCase(), style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          name,
+                          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '$count stamps',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _HistoryItem {
+  final String type;
+  final String label;
+  final String? customerName;
+  final String customerId;
+  final Timestamp ts;
+  final Color color;
+  final IconData icon;
+  _HistoryItem({
+    required this.type,
+    required this.label,
+    required this.customerName,
+    required this.customerId,
+    required this.ts,
+    required this.color,
+    required this.icon,
+  });
+}
+
+Future<String?> _getCustomerName(String uid) async {
+  try {
+    final snap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    if (snap.exists) {
+      final d = snap.data();
+      return (d?['name'] ?? d?['displayName']) as String?;
+    }
+  } catch (_) {}
+  return null;
+}

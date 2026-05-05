@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,7 +19,14 @@ class MerchantScanScreen extends StatefulWidget {
 }
 
 class _MerchantScanScreenState extends State<MerchantScanScreen> {
-  static const String _qrValue = 'BINPERKS_USER_001';
+  String? _userName;
+
+  String get _qrValue {
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid ?? 'unknown';
+    final name = _userName ?? user?.displayName ?? 'Customer';
+    return 'BINPERKS_USER_${uid}|${name}';
+  }
   static const int _timerSeconds = 300; // 5 minutes
 
   Timer? _countdownTimer;
@@ -35,6 +44,21 @@ class _MerchantScanScreenState extends State<MerchantScanScreen> {
     super.initState();
     _setMaxBrightness();
     _startTimer();
+    _loadName();
+  }
+
+  Future<void> _loadName() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final snap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (snap.exists && mounted) {
+        final data = snap.data();
+        setState(() {
+          _userName = (data?['name'] ?? data?['displayName']) as String?;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _setMaxBrightness() async {
@@ -168,7 +192,7 @@ class _MerchantScanScreenState extends State<MerchantScanScreen> {
                     GestureDetector(
                       onTap: () async {
                         await Clipboard.setData(
-                            const ClipboardData(text: _qrValue));
+                            ClipboardData(text: _qrValue));
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(

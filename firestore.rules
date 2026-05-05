@@ -1,8 +1,153 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+
+    // ── Helpers ───────────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ── Users ─────────────────────────────────────────────────────
+    // Each user reads/writes their own doc. Admins can read all
+    // (needed for the users list page). No cross-user reads by customers
+    // or vendors (FCM tokens and emails stay private).
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if request.auth.uid == userId || isAdmin();
+    }
+
+    // ── Businesses ────────────────────────────────────────────────
+    // All authenticated users can read (discovery, loyalty card display).
+    // Only the owning vendor (uid == bizId) or admin can write.
+    match /businesses/{bizId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == bizId;
+      allow update: if (isAuthenticated() && request.auth.uid == bizId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Loyalties ─────────────────────────────────────────────────
+    // Customer reads their own cards; vendor reads their business's cards.
+    // Customers can join (create) a card but only with 0 stamps and rewards.
+    // Only the vendor updates loyalty docs — prevents self-awarding stamps.
+    match /loyalties/{loyaltyId} {
+      allow get: if isAuthenticated() && (
+        resource == null ||
+        resource.data.customerId == request.auth.uid ||
+        resource.data.businessId == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isAuthenticated() && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.businessId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        request.auth.uid == request.resource.data.businessId ||
+        request.auth.uid == request.resource.data.customerId
+      );
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.businessId || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ── Stamps ────────────────────────────────────────────────────
+    // Individual stamp event records (activity feed + audit trail).
+    // Only the vendor who issued the stamp can create records.
+    match /stamps/{stampId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.customerId ||
+        request.auth.uid == resource.data.vendorId ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() &&
+        request.auth.uid == request.resource.data.vendorId;
+    }
+
+    // ── Rewards ───────────────────────────────────────────────────
+    // Records issued when a customer completes a stamp card.
+    // Only the vendor scanner creates/updates these.
+    match /rewards/{rewardId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.customerId ||
+        request.auth.uid == resource.data.vendorId ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() &&
+        request.auth.uid == request.resource.data.vendorId;
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.vendorId || isAdmin()
+      );
+    }
+
+    // ── Redemptions ───────────────────────────────────────────────
+    // Created by the vendor scanner when a reward is claimed.
+    // Customer reads their own history (profile reward history screen).
+    // Vendor reads their business's redemptions (dashboard activity feed).
+    match /redemptions/{redId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.customerId ||
+        request.auth.uid == resource.data.vendorId ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() &&
+        request.auth.uid == request.resource.data.vendorId;
+    }
+
+    // ── Reviews ───────────────────────────────────────────────────
+    // All authenticated users can read (shown on vendor dashboard).
+    // Only the customer who wrote the review creates it.
+    // Vendors can only set flagged/flaggedAt on reviews for their business —
+    // no other fields can be changed.
+    // Admin or the original customer can delete.
+    match /reviews/{revId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.auth.uid == request.resource.data.customerId;
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        request.auth.uid == resource.data.customerId ||
+        (request.auth.uid == resource.data.businessId &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['flagged', 'flaggedAt']))
+      );
+      allow delete: if isAdmin() ||
+        (isAuthenticated() && request.auth.uid == resource.data.customerId);
+    }
+
+    // ── Payments ─────────────────────────────────────────────────
+    // Written exclusively by Cloud Functions via the admin SDK (bypasses rules).
+    // Vendors can read their own payment history; admin reads all.
+    // Client-side writes are blocked entirely.
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.businessId || isAdmin()
+      );
+      allow write: if false;
+    }
+
+    // ── Platform settings ─────────────────────────────────────────
+    // Subscription plan config read by vendors (billing screen).
+    // Only admin can change platform-wide settings.
+    match /platform/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ── Audit log ─────────────────────────────────────────────────
+    // Admin-only. Written by Cloud Functions or admin app.
+    // No client-side writes from non-admins.
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
   }
 }

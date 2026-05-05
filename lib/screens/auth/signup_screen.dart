@@ -24,6 +24,7 @@ class _SignupScreenState extends State<SignupScreen> {
   String? _error;
   bool _emailExistsError = false;
   String _role = 'customer';
+  bool _agreedToTerms = false;
 
   Future<void> _signUp() async {
     if (_nameCtrl.text.trim().isEmpty) {
@@ -36,6 +37,10 @@ class _SignupScreenState extends State<SignupScreen> {
     }
     if (_passCtrl.text.trim().length < 6) {
       setState(() { _error = 'Password must be at least 6 characters'; _emailExistsError = false; });
+      return;
+    }
+    if (!_agreedToTerms) {
+      setState(() { _error = 'Please accept the Terms of Service and Privacy Policy to continue.'; _emailExistsError = false; });
       return;
     }
 
@@ -57,6 +62,7 @@ class _SignupScreenState extends State<SignupScreen> {
         'email': _emailCtrl.text.trim(),
         'role': _role,
         'createdAt': FieldValue.serverTimestamp(),
+        'agreedToTermsAt': FieldValue.serverTimestamp(),
       });
 
       await cred.user?.reload();
@@ -213,7 +219,76 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
+
+              // ── Terms of Service checkbox ──────────────────────────
+              GestureDetector(
+                onTap: () => setState(() => _agreedToTerms = !_agreedToTerms),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      width: 22,
+                      height: 22,
+                      margin: const EdgeInsets.only(top: 1),
+                      decoration: BoxDecoration(
+                        color: _agreedToTerms
+                            ? AppColors.primary
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: _agreedToTerms
+                              ? AppColors.primary
+                              : AppColors.outline,
+                          width: 2,
+                        ),
+                      ),
+                      child: _agreedToTerms
+                          ? const Icon(Icons.check,
+                              size: 14, color: Colors.white)
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.onSecondaryContainer,
+                            height: 1.5,
+                          ),
+                          children: [
+                            const TextSpan(text: 'I agree to the '),
+                            TextSpan(
+                              text: 'Terms of Service',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
+                                height: 1.5,
+                              ),
+                            ),
+                            const TextSpan(text: ' and '),
+                            TextSpan(
+                              text: 'Privacy Policy',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
 
               if (_error != null) ...[
                 Container(

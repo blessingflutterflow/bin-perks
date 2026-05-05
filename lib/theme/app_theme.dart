@@ -10,71 +10,107 @@ class AppTheme {
     return TextTheme(
       // Display – large editorial hero text
       displayLarge: GoogleFonts.plusJakartaSans(
-        fontSize: 60, fontWeight: FontWeight.w800, letterSpacing: -1.0, height: 1.1,
+        fontSize: 60,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -1.0,
+        height: 1.1,
         color: AppColors.onSurface,
       ),
       displayMedium: GoogleFonts.plusJakartaSans(
-        fontSize: 48, fontWeight: FontWeight.w800, letterSpacing: -0.8, height: 1.1,
+        fontSize: 48,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.8,
+        height: 1.1,
         color: AppColors.onSurface,
       ),
       displaySmall: GoogleFonts.plusJakartaSans(
-        fontSize: 38, fontWeight: FontWeight.w800, letterSpacing: -0.5, height: 1.1,
+        fontSize: 38,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.5,
+        height: 1.1,
         color: AppColors.onSurface,
       ),
 
       // Headlines – section titles, card headers
       headlineLarge: GoogleFonts.plusJakartaSans(
-        fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -0.5, height: 1.2,
+        fontSize: 34,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.5,
+        height: 1.2,
         color: AppColors.onSurface,
       ),
       headlineMedium: GoogleFonts.plusJakartaSans(
-        fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -0.3, height: 1.25,
+        fontSize: 30,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.3,
+        height: 1.25,
         color: AppColors.onSurface,
       ),
       headlineSmall: GoogleFonts.plusJakartaSans(
-        fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.2, height: 1.3,
+        fontSize: 26,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.2,
+        height: 1.3,
         color: AppColors.onSurface,
       ),
 
       // Title – card names, list items
       titleLarge: GoogleFonts.plusJakartaSans(
-        fontSize: 22, fontWeight: FontWeight.w800, height: 1.3,
+        fontSize: 22,
+        fontWeight: FontWeight.w800,
+        height: 1.3,
         color: AppColors.onSurface,
       ),
       titleMedium: GoogleFonts.plusJakartaSans(
-        fontSize: 18, fontWeight: FontWeight.w700, height: 1.4,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        height: 1.4,
         color: AppColors.onSurface,
       ),
       titleSmall: GoogleFonts.plusJakartaSans(
-        fontSize: 16, fontWeight: FontWeight.w700, height: 1.4,
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        height: 1.4,
         color: AppColors.onSurface,
       ),
 
       // Body – descriptions, metadata
       bodyLarge: GoogleFonts.beVietnamPro(
-        fontSize: 17, fontWeight: FontWeight.w500, height: 1.6,
+        fontSize: 17,
+        fontWeight: FontWeight.w500,
+        height: 1.6,
         color: AppColors.onSurface,
       ),
       bodyMedium: GoogleFonts.beVietnamPro(
-        fontSize: 15, fontWeight: FontWeight.w500, height: 1.6,
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+        height: 1.6,
         color: AppColors.onSurface,
       ),
       bodySmall: GoogleFonts.beVietnamPro(
-        fontSize: 13, fontWeight: FontWeight.w500, height: 1.5,
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        height: 1.5,
         color: AppColors.onSurfaceVariant,
       ),
 
       // Label – uppercase metadata, badges
       labelLarge: GoogleFonts.beVietnamPro(
-        fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 0.6,
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6,
         color: AppColors.onSurface,
       ),
       labelMedium: GoogleFonts.beVietnamPro(
-        fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 0.8,
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
         color: AppColors.onSurface,
       ),
       labelSmall: GoogleFonts.beVietnamPro(
-        fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.2,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 1.2,
         color: AppColors.onSurface,
       ),
     );
@@ -120,7 +156,8 @@ class AppTheme {
           elevation: 0,
           shape: const StadiumBorder(),
           textStyle: GoogleFonts.plusJakartaSans(
-            fontSize: 18, fontWeight: FontWeight.w800,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
@@ -131,7 +168,171 @@ class AppTheme {
           borderRadius: BorderRadius.circular(9999),
           borderSide: BorderSide.none,
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 24,
+          vertical: 18,
+        ),
+      ),
+    );
+  }
+
+  static ThemeData get dark {
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: const ColorScheme.dark(
+        primary: AppColors.primary,
+        onPrimary: AppColors.onPrimary,
+        primaryContainer: AppColors.primaryContainer,
+        onPrimaryContainer: AppColors.onPrimaryContainer,
+        secondary: AppColors.secondary,
+        onSecondary: AppColors.onSecondary,
+        secondaryContainer: AppColors.secondaryContainer,
+        onSecondaryContainer: AppColors.onSecondaryContainer,
+        surface: AppColors.darkSurface,
+        onSurface: AppColors.darkOnSurface,
+        onSurfaceVariant: AppColors.darkOnSurfaceVariant,
+        outline: AppColors.darkOutline,
+        outlineVariant: AppColors.darkOutlineVariant,
+        error: AppColors.error,
+        onError: AppColors.onError,
+        errorContainer: AppColors.errorContainer,
+        onErrorContainer: AppColors.onErrorContainer,
+        inverseSurface: AppColors.surface,
+        onInverseSurface: AppColors.onSurface,
+        inversePrimary: AppColors.inversePrimary,
+      ),
+      textTheme: _darkTextTheme,
+      scaffoldBackgroundColor: AppColors.darkSurface,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: AppColors.onPrimary,
+          elevation: 0,
+          shape: const StadiumBorder(),
+          textStyle: GoogleFonts.plusJakartaSans(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.darkSurfaceContainerHigh,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(9999),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 24,
+          vertical: 18,
+        ),
+      ),
+    );
+  }
+
+  static TextTheme get _darkTextTheme {
+    return TextTheme(
+      displayLarge: GoogleFonts.plusJakartaSans(
+        fontSize: 60,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -1.0,
+        height: 1.1,
+        color: AppColors.darkOnSurface,
+      ),
+      displayMedium: GoogleFonts.plusJakartaSans(
+        fontSize: 48,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.8,
+        height: 1.1,
+        color: AppColors.darkOnSurface,
+      ),
+      displaySmall: GoogleFonts.plusJakartaSans(
+        fontSize: 38,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.5,
+        height: 1.1,
+        color: AppColors.darkOnSurface,
+      ),
+      headlineLarge: GoogleFonts.plusJakartaSans(
+        fontSize: 34,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.5,
+        height: 1.2,
+        color: AppColors.darkOnSurface,
+      ),
+      headlineMedium: GoogleFonts.plusJakartaSans(
+        fontSize: 30,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.3,
+        height: 1.25,
+        color: AppColors.darkOnSurface,
+      ),
+      headlineSmall: GoogleFonts.plusJakartaSans(
+        fontSize: 26,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.2,
+        height: 1.3,
+        color: AppColors.darkOnSurface,
+      ),
+      titleLarge: GoogleFonts.plusJakartaSans(
+        fontSize: 22,
+        fontWeight: FontWeight.w800,
+        height: 1.3,
+        color: AppColors.darkOnSurface,
+      ),
+      titleMedium: GoogleFonts.plusJakartaSans(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        height: 1.4,
+        color: AppColors.darkOnSurface,
+      ),
+      titleSmall: GoogleFonts.plusJakartaSans(
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        height: 1.4,
+        color: AppColors.darkOnSurface,
+      ),
+      bodyLarge: GoogleFonts.beVietnamPro(
+        fontSize: 17,
+        fontWeight: FontWeight.w500,
+        height: 1.6,
+        color: AppColors.darkOnSurface,
+      ),
+      bodyMedium: GoogleFonts.beVietnamPro(
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+        height: 1.6,
+        color: AppColors.darkOnSurface,
+      ),
+      bodySmall: GoogleFonts.beVietnamPro(
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        height: 1.5,
+        color: AppColors.darkOnSurfaceVariant,
+      ),
+      labelLarge: GoogleFonts.beVietnamPro(
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6,
+        color: AppColors.darkOnSurface,
+      ),
+      labelMedium: GoogleFonts.beVietnamPro(
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
+        color: AppColors.darkOnSurface,
+      ),
+      labelSmall: GoogleFonts.beVietnamPro(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 1.2,
+        color: AppColors.darkOnSurface,
       ),
     );
   }
