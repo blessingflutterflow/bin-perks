@@ -52,7 +52,7 @@ class VendorDashboardScreen extends StatelessWidget {
           SliverToBoxAdapter(child: _buildStats(vendorId)),
           SliverToBoxAdapter(child: _buildActivityFeed(vendorId)),
           SliverToBoxAdapter(child: _buildReviews(vendorId)),
-          SliverToBoxAdapter(child: _buildReviewEditor(vendorId)),
+          SliverToBoxAdapter(child: _ReviewEditorSection(vendorId: vendorId)),
           SliverToBoxAdapter(child: _buildCooldown(vendorId)),
           const SliverToBoxAdapter(child: SizedBox(height: 120)),
         ],
@@ -202,6 +202,27 @@ class VendorDashboardScreen extends StatelessWidget {
                     .snapshots()
               : null,
           builder: (context, redeemSnap) {
+            if (stampsSnap.hasError || redeemSnap.hasError) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                child: Text(
+                  'Unable to load stats. Please try again.',
+                  style: GoogleFonts.beVietnamPro(
+                      fontSize: 13, color: AppColors.error),
+                ),
+              );
+            }
+            if (!stampsSnap.hasData || !redeemSnap.hasData) {
+              return const Padding(
+                padding: EdgeInsets.fromLTRB(16, 20, 16, 0),
+                child: SizedBox(
+                  height: 60,
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              );
+            }
             final stamps = stampsSnap.data?.docs ?? [];
             final redeems = redeemSnap.data?.docs ?? [];
 
@@ -342,7 +363,7 @@ class VendorDashboardScreen extends StatelessWidget {
     );
   }
 
-  // ── Unified Activity Feed ─────────────────────────────────────────
+  // ── Activity Archive Card ─────────────────────────────────────────
 
   Widget _buildActivityFeed(String? vendorId) {
     return StreamBuilder<QuerySnapshot>(
@@ -351,7 +372,7 @@ class VendorDashboardScreen extends StatelessWidget {
                 .collection('stamps')
                 .where('vendorId', isEqualTo: vendorId)
                 .orderBy('createdAt', descending: true)
-                .limit(15)
+                .limit(50)
                 .snapshots()
           : null,
       builder: (context, stampsSnap) {
@@ -361,13 +382,24 @@ class VendorDashboardScreen extends StatelessWidget {
                     .collection('redemptions')
                     .where('vendorId', isEqualTo: vendorId)
                     .orderBy('redeemedAt', descending: true)
-                    .limit(15)
+                    .limit(50)
                     .snapshots()
               : null,
           builder: (context, redeemSnap) {
-            // Build a unified list of activity events
+            if (stampsSnap.hasError || redeemSnap.hasError) {
+              final err = stampsSnap.error?.toString() ?? redeemSnap.error?.toString() ?? 'Unknown';
+              return _Section(
+                title: 'Activity Archive',
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'Error: $err\n\nRun: firebase deploy --only firestore:indexes',
+                    style: GoogleFonts.beVietnamPro(fontSize: 12, color: AppColors.error),
+                  ),
+                ),
+              );
+            }
             final events = <_ActivityEvent>[];
-
             for (final s in stampsSnap.data?.docs ?? []) {
               final d = s.data() as Map<String, dynamic>;
               final ts = d['createdAt'] as Timestamp?;
@@ -378,9 +410,9 @@ class VendorDashboardScreen extends StatelessWidget {
                 customerName: d['customerName'] as String?,
                 label: 'Stamp #${d['stampNumber'] ?? ''}',
                 ts: ts,
+                docId: s.id,
               ));
             }
-
             for (final r in redeemSnap.data?.docs ?? []) {
               final d = r.data() as Map<String, dynamic>;
               final ts = d['redeemedAt'] as Timestamp?;
@@ -391,110 +423,115 @@ class VendorDashboardScreen extends StatelessWidget {
                 customerName: d['customerName'] as String?,
                 label: d['rewardDescription'] as String? ?? 'Reward redeemed',
                 ts: ts,
+                docId: r.id,
               ));
             }
-
             events.sort((a, b) => b.ts.compareTo(a.ts));
-            final recent = events.take(10).toList();
-            return _Section(
-              title: 'Recent Activity',
-              trailing: recent.isNotEmpty
-                  ? GestureDetector(
-                      onTap: () => Navigator.push(
+            final total = events.length;
+            final peek = events.take(2).toList();
+
+            return _ArchiveCard(
+              title: 'Activity Archive',
+              count: total,
+              icon: PhosphorIcons.archive(PhosphorIconsStyle.fill),
+              iconColor: AppColors.primary,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const VendorHistoryScreen()),
+              ),
+              onLongPress: total == 0
+                  ? null
+                  : () => _showClearDialog(
                         context,
-                        MaterialPageRoute(
-                            builder: (_) => const VendorHistoryScreen()),
+                        title: 'Clear Activity Archive?',
+                        message:
+                            'This will permanently delete all $total activity records (stamps & redemptions).',
+                        onConfirm: () => _clearActivityArchive(vendorId!, events),
                       ),
-                      child: Text(
-                        'View All',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    )
-                  : null,
-              child: recent.isEmpty
+              child: total == 0
                   ? _emptyState('No activity yet — start scanning customers')
                   : Column(
-                      children: recent.map((e) {
-                        final isRedeem = e.type == _EventType.redemption;
-                        final short = e.customerId.length > 8
-                            ? e.customerId.substring(0, 8)
-                            : e.customerId;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 9),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: isRedeem
-                                      ? const Color(0xFF7C3AED).withValues(alpha: 0.12)
-                                      : AppColors.primaryContainer.withValues(alpha: 0.50),
-                                  shape: BoxShape.circle,
+                      children: [
+                        ...peek.map((e) {
+                          final isRedeem = e.type == _EventType.redemption;
+                          final short = e.customerId.length > 8
+                              ? e.customerId.substring(0, 8)
+                              : e.customerId;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: isRedeem
+                                        ? const Color(0xFF7C3AED)
+                                            .withValues(alpha: 0.12)
+                                        : AppColors.primaryContainer
+                                            .withValues(alpha: 0.50),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    isRedeem
+                                        ? PhosphorIcons.gift(
+                                            PhosphorIconsStyle.fill)
+                                        : PhosphorIcons.stamp(
+                                            PhosphorIconsStyle.fill),
+                                    size: 14,
+                                    color: isRedeem
+                                        ? const Color(0xFF7C3AED)
+                                        : AppColors.primary,
+                                  ),
                                 ),
-                                child: Icon(
-                                  isRedeem
-                                      ? PhosphorIcons.gift(PhosphorIconsStyle.fill)
-                                      : PhosphorIcons.stamp(PhosphorIconsStyle.fill),
-                                  size: 16,
-                                  color: isRedeem
-                                      ? const Color(0xFF7C3AED)
-                                      : AppColors.primary,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      e.label,
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.onSurface,
-                                      ),
-                                    ),
-                                    if (e.customerName != null)
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
                                       Text(
-                                        e.customerName!,
+                                        e.label,
                                         style: GoogleFonts.beVietnamPro(
-                                          fontSize: 11,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.onSurface,
+                                        ),
+                                      ),
+                                      Text(
+                                        e.customerName ??
+                                            'Customer ${short}',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 10,
                                           color: AppColors.onSecondaryContainer,
                                         ),
-                                      )
-                                    else
-                                      FutureBuilder<String?>(
-                                        future: _getCustomerName(e.customerId),
-                                        builder: (context, snap) {
-                                          final name = snap.data ?? 'Customer ${short}';
-                                          return Text(
-                                            name,
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 11,
-                                              color: AppColors.onSecondaryContainer,
-                                            ),
-                                          );
-                                        },
                                       ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                _timeAgo(e.ts),
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  color: AppColors.onSecondaryContainer,
+                                Text(
+                                  _timeAgo(e.ts),
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 10,
+                                    color: AppColors.onSecondaryContainer,
+                                  ),
                                 ),
+                              ],
+                            ),
+                          );
+                        }),
+                        if (total > 2)
+                          Center(
+                            child: Text(
+                              '${total - 2} more in archive',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary,
                               ),
-                            ],
+                            ),
                           ),
-                        );
-                      }).toList(),
+                      ],
                     ),
             );
           },
@@ -503,7 +540,22 @@ class VendorDashboardScreen extends StatelessWidget {
     );
   }
 
-  // ── Customer Reviews ──────────────────────────────────────────────
+  Future<void> _clearActivityArchive(
+      String vendorId, List<_ActivityEvent> events) async {
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      for (final e in events) {
+        final col = e.type == _EventType.stamp ? 'stamps' : 'redemptions';
+        batch.delete(
+            FirebaseFirestore.instance.collection(col).doc(e.docId));
+      }
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Error clearing activity archive: $e');
+    }
+  }
+
+  // ── Reviews Archive Card ──────────────────────────────────────────
 
   Widget _buildReviews(String? vendorId) {
     return StreamBuilder<QuerySnapshot>(
@@ -512,125 +564,234 @@ class VendorDashboardScreen extends StatelessWidget {
                 .collection('reviews')
                 .where('businessId', isEqualTo: vendorId)
                 .orderBy('createdAt', descending: true)
-                .limit(5)
+                .limit(100)
                 .snapshots()
           : null,
       builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          return _Section(
+            title: 'Reviews Archive',
+            child: const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+        if (snap.hasError) {
+          return _Section(
+            title: 'Reviews Archive',
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Error loading reviews: ${snap.error}\n\nCreate a Firestore composite index:\ncollection=reviews, fields=businessId(asc)+createdAt(desc)',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  color: AppColors.error,
+                ),
+              ),
+            ),
+          );
+        }
         final docs = snap.data?.docs ?? [];
         const emojis = ['😡', '😕', '😐', '🙂', '😍'];
         const labels = ['Awful', 'Bad', 'OK', 'Good', 'Loved it!'];
+        final total = docs.length;
+        final avg = total > 0
+            ? docs
+                    .map((d) => ((d.data() as Map<String, dynamic>)['rating'] as num?)?.toInt() ?? 2)
+                    .reduce((a, b) => a + b) /
+                total
+            : 0;
+        final peekDocs = docs.take(2).toList();
 
-        return _Section(
-          title: 'Recent Reviews',
-          trailing: docs.isNotEmpty
-              ? GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const VendorReviewsScreen()),
-                  ),
-                  child: Text(
-                    'View All',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                )
+        return _ArchiveCard(
+          title: 'Reviews Archive',
+          count: total,
+          icon: PhosphorIcons.star(PhosphorIconsStyle.fill),
+          iconColor: const Color(0xFF7C3AED),
+          subtitle: total > 0
+              ? '${avg.toStringAsFixed(1)} avg rating'
               : null,
-          child: docs.isEmpty
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const VendorReviewsScreen()),
+          ),
+          onLongPress: total == 0
+              ? null
+              : () => _showClearDialog(
+                    context,
+                    title: 'Clear Reviews Archive?',
+                    message:
+                        'This will permanently delete all $total reviews.',
+                    onConfirm: () => _clearReviewsArchive(vendorId!, docs),
+                  ),
+          child: total == 0
               ? _emptyState('No reviews yet')
               : Column(
-                  children: docs.map((doc) {
-                    final d = doc.data() as Map<String, dynamic>;
-                    final rating = (d['rating'] as num?)?.toInt() ?? 2;
-                    final safeRating = rating.clamp(0, 4);
-                    final ts = d['createdAt'] as Timestamp?;
-                    final alreadyFlagged = d['flagged'] as bool? ?? false;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          Text(emojis[safeRating],
-                              style: const TextStyle(fontSize: 26)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(labels[safeRating],
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.onSurface,
-                                    )),
-                                if (ts != null)
-                                  Text(
-                                    DateFormat('MMM d').format(ts.toDate()),
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 11,
-                                      color: AppColors.onSecondaryContainer,
-                                    ),
-                                  ),
-                                if (d['comment'] != null && d['comment'].toString().trim().isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '"${d['comment']}"',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 12,
-                                      fontStyle: FontStyle.italic,
-                                      color: AppColors.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: alreadyFlagged
-                                ? null
-                                : () {
-                                    FirebaseFirestore.instance
-                                        .collection('reviews')
-                                        .doc(doc.id)
-                                        .update({
-                                      'flagged': true,
-                                      'flaggedAt':
-                                          FieldValue.serverTimestamp(),
-                                    });
-                                    ScaffoldMessenger.of(context)
-                                        .showSnackBar(
-                                      const SnackBar(
-                                        content:
-                                            Text('Review reported for moderation'),
-                                        behavior: SnackBarBehavior.floating,
-                                      ),
-                                    );
-                                  },
-                            child: Icon(
-                              PhosphorIcons.flag(
-                                alreadyFlagged
-                                    ? PhosphorIconsStyle.fill
-                                    : PhosphorIconsStyle.regular,
+                  children: [
+                    ...peekDocs.map((doc) {
+                      final d = doc.data() as Map<String, dynamic>;
+                      final rating = (d['rating'] as num?)?.toInt() ?? 2;
+                      final safeRating = rating.clamp(0, 4);
+                      final ts = d['createdAt'] as Timestamp?;
+                      final alreadyFlagged = d['flagged'] as bool? ?? false;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          children: [
+                            Text(emojis[safeRating],
+                                style: const TextStyle(fontSize: 20)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Builder(
+                                builder: (context) {
+                                  final comment = (d['comment'] as String?) ?? '';
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(labels[safeRating],
+                                          style: GoogleFonts.plusJakartaSans(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.onSurface,
+                                          )),
+                                      if (ts != null)
+                                        Text(
+                                          DateFormat('MMM d').format(ts.toDate()),
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 10,
+                                            color: AppColors.onSecondaryContainer,
+                                          ),
+                                        ),
+                                      if (comment.isNotEmpty)
+                                        Text(
+                                          comment.length > 50
+                                              ? '${comment.substring(0, 50)}...'
+                                              : comment,
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 10,
+                                            color: AppColors.onSecondaryContainer,
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
+                                  );
+                                },
                               ),
-                              size: 18,
-                              color: alreadyFlagged
-                                  ? AppColors.error
-                                  : AppColors.onSecondaryContainer
-                                      .withValues(alpha: 0.4),
                             ),
+                            GestureDetector(
+                              onTap: alreadyFlagged
+                                  ? null
+                                  : () {
+                                      FirebaseFirestore.instance
+                                          .collection('reviews')
+                                          .doc(doc.id)
+                                          .update({
+                                        'flagged': true,
+                                        'flaggedAt':
+                                            FieldValue.serverTimestamp(),
+                                      });
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                              'Review reported for moderation'),
+                                          behavior: SnackBarBehavior.floating,
+                                        ),
+                                      );
+                                    },
+                              child: Icon(
+                                PhosphorIcons.flag(
+                                  alreadyFlagged
+                                      ? PhosphorIconsStyle.fill
+                                      : PhosphorIconsStyle.regular,
+                                ),
+                                size: 16,
+                                color: alreadyFlagged
+                                    ? AppColors.error
+                                    : AppColors.onSecondaryContainer
+                                        .withValues(alpha: 0.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    if (total > 2)
+                      Center(
+                        child: Text(
+                          '${total - 2} more in archive',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF7C3AED),
                           ),
-                        ],
+                        ),
                       ),
-                    );
-                  }).toList(),
+                  ],
                 ),
         );
       },
     );
   }
 
+  Future<void> _clearReviewsArchive(
+      String vendorId, List<QueryDocumentSnapshot> docs) async {
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in docs) {
+        batch.delete(FirebaseFirestore.instance.collection('reviews').doc(doc.id));
+      }
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Error clearing reviews archive: $e');
+    }
+  }
+
+  void _showClearDialog(BuildContext context,
+      {required String title,
+      required String message,
+      required VoidCallback onConfirm}) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title,
+            style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w800, fontSize: 16)),
+        content: Text(message,
+            style: GoogleFonts.beVietnamPro(fontSize: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel',
+                style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              onConfirm();
+            },
+            child: Text('Delete',
+                style: GoogleFonts.beVietnamPro(
+                    fontWeight: FontWeight.w700, color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+  }
   // ── Cooldown Settings ─────────────────────────────────────────────
 
   Widget _buildCooldown(String? vendorId) {
@@ -747,17 +908,87 @@ class VendorDashboardScreen extends StatelessWidget {
     return null;
   }
 
-  Widget _buildReviewEditor(String? vendorId) {
+
+  Widget _emptyState(String msg) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Text(msg,
+            style: GoogleFonts.beVietnamPro(
+                fontSize: 13, color: AppColors.onSecondaryContainer),
+            textAlign: TextAlign.center),
+      );
+}
+
+// ── Review Question editor ────────────────────────────────────────────
+
+class _ReviewEditorSection extends StatefulWidget {
+  final String? vendorId;
+  const _ReviewEditorSection({required this.vendorId});
+
+  @override
+  State<_ReviewEditorSection> createState() => _ReviewEditorSectionState();
+}
+
+class _ReviewEditorSectionState extends State<_ReviewEditorSection> {
+  final _ctrl = TextEditingController();
+  final _focus = FocusNode();
+  bool _saving = false;
+  String? _lastLoaded;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final val = _ctrl.text.trim();
+    if (widget.vendorId == null || val.isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      await FirebaseFirestore.instance
+          .collection('businesses')
+          .doc(widget.vendorId)
+          .update({'reviewQuestion': val});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Review question updated!')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to save. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
-      stream: vendorId != null
+      stream: widget.vendorId != null
           ? FirebaseFirestore.instance
                 .collection('businesses')
-                .doc(vendorId)
+                .doc(widget.vendorId)
                 .snapshots()
           : null,
       builder: (context, snap) {
         final biz = snap.data?.data() as Map<String, dynamic>? ?? {};
-        final currentQuestion = biz['reviewQuestion'] as String? ?? 'How was your visit?';
+        final firestoreQuestion =
+            biz['reviewQuestion'] as String? ?? 'How was your visit?';
+
+        // Only sync from Firestore when the value changes and the field isn't focused,
+        // so the user's in-progress edits are never overwritten by a stream event.
+        if (_lastLoaded != firestoreQuestion && !_focus.hasFocus) {
+          _lastLoaded = firestoreQuestion;
+          _ctrl.text = firestoreQuestion;
+          _ctrl.selection = TextSelection.fromPosition(
+            TextPosition(offset: firestoreQuestion.length),
+          );
+        }
 
         return _Section(
           title: 'Review Question',
@@ -773,16 +1004,9 @@ class VendorDashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               TextField(
-                onSubmitted: (val) {
-                  if (vendorId == null || val.trim().isEmpty) return;
-                  FirebaseFirestore.instance
-                      .collection('businesses')
-                      .doc(vendorId)
-                      .update({'reviewQuestion': val.trim()});
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Review question updated!')),
-                  );
-                },
+                controller: _ctrl,
+                focusNode: _focus,
+                onSubmitted: (_) => _save(),
                 decoration: InputDecoration(
                   hintText: 'e.g. How was your coffee today?',
                   hintStyle: GoogleFonts.beVietnamPro(
@@ -797,16 +1021,47 @@ class VendorDashboardScreen extends StatelessWidget {
                       color: AppColors.outlineVariant.withValues(alpha: 0.4),
                     ),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 ),
-                controller: TextEditingController(text: currentQuestion)
-                  ..selection = TextSelection.fromPosition(
-                    TextPosition(offset: currentQuestion.length),
-                  ),
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppColors.onSurface,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _saving ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    disabledBackgroundColor:
+                        AppColors.primary.withValues(alpha: 0.5),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.onPrimary,
+                          ),
+                        )
+                      : Text(
+                          'Save Changes',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.onPrimary,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -815,14 +1070,6 @@ class VendorDashboardScreen extends StatelessWidget {
       },
     );
   }
-
-  Widget _emptyState(String msg) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Text(msg,
-            style: GoogleFonts.beVietnamPro(
-                fontSize: 13, color: AppColors.onSecondaryContainer),
-            textAlign: TextAlign.center),
-      );
 }
 
 // ── Shared section wrapper ────────────────────────────────────────────
@@ -992,10 +1239,129 @@ class _ActivityEvent {
   final String? customerName;
   final String label;
   final Timestamp ts;
+  final String docId;
   const _ActivityEvent(
       {required this.type,
       required this.customerId,
       this.customerName,
       required this.label,
-      required this.ts});
+      required this.ts,
+      required this.docId});
+}
+
+// ── Archive Summary Card ────────────────────────────────────────────
+
+class _ArchiveCard extends StatelessWidget {
+  final String title;
+  final int count;
+  final IconData icon;
+  final Color iconColor;
+  final String? subtitle;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final Widget child;
+
+  const _ArchiveCard({
+    required this.title,
+    required this.count,
+    required this.icon,
+    required this.iconColor,
+    this.subtitle,
+    required this.onTap,
+    this.onLongPress,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: onTap,
+            onLongPress: onLongPress,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                    color: AppColors.outlineVariant.withValues(alpha: 0.4)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: iconColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(icon, color: iconColor, size: 18),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.onSurface,
+                              ),
+                            ),
+                            if (subtitle != null)
+                              Text(
+                                subtitle!,
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 11,
+                                  color: AppColors.onSecondaryContainer,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: iconColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(9999),
+                        ),
+                        child: Text(
+                          '$count',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: iconColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (count > 0) ...[
+                    const SizedBox(height: 12),
+                    const Divider(height: 1, thickness: 0.5),
+                    const SizedBox(height: 12),
+                    child,
+                  ] else ...[
+                    const SizedBox(height: 12),
+                    child,
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

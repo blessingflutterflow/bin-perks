@@ -412,20 +412,21 @@ class _ActivityTab extends StatelessWidget {
     );
   }
 
-  Widget _emptyState(String msg) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(PhosphorIcons.archive(PhosphorIconsStyle.light), size: 64, color: AppColors.outline),
-            const SizedBox(height: 16),
-            Text(
-              msg,
-              style: GoogleFonts.beVietnamPro(color: AppColors.onSecondaryContainer),
-            ),
-          ],
-        ),
-      );
 }
+
+Widget _emptyState(String msg) => Center(
+  child: Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Icon(PhosphorIcons.archive(PhosphorIconsStyle.light), size: 64, color: AppColors.outline),
+      const SizedBox(height: 16),
+      Text(
+        msg,
+        style: GoogleFonts.beVietnamPro(color: AppColors.onSecondaryContainer),
+      ),
+    ],
+  ),
+);
 
 class _CustomerTab extends StatelessWidget {
   final DateTimeRange range;
@@ -438,59 +439,43 @@ class _CustomerTab extends StatelessWidget {
 
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('stamps')
-          .where('vendorId', isEqualTo: vendorId)
-          .where('createdAt', isGreaterThanOrEqualTo: range.start)
-          .where('createdAt', isLessThan: range.end)
+          .collection('loyalties')
+          .where('businessId', isEqualTo: vendorId)
           .snapshots(),
       builder: (context, snap) {
-        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-        
-        final docs = snap.data!.docs;
-        final stats = <String, int>{};
-        final names = <String, String?>{};
+        if (snap.hasError) return _emptyState('Failed to load customers');
+        if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
 
-        for (final doc in docs) {
-          final d = doc.data() as Map<String, dynamic>;
-          final id = d['customerId'] as String;
-          final name = d['customerName'] as String?;
-          
-          stats[id] = (stats[id] ?? 0) + 1;
-          if (name != null) names[id] = name;
-        }
-
-        final sortedIds = stats.keys.toList()..sort((a, b) => stats[b]!.compareTo(stats[a]!));
-
-        if (sortedIds.isEmpty) {
-          return const Center(child: Text('No customer data for this period'));
+        final docs = List<QueryDocumentSnapshot>.from(snap.data!.docs)
+          ..sort((a, b) {
+            final aTs = (a.data() as Map<String, dynamic>)['lastStampAt'] as Timestamp?;
+            final bTs = (b.data() as Map<String, dynamic>)['lastStampAt'] as Timestamp?;
+            if (aTs == null && bTs == null) return 0;
+            if (aTs == null) return 1;
+            if (bTs == null) return -1;
+            return bTs.compareTo(aTs);
+          });
+        if (docs.isEmpty) {
+          return _emptyState('No loyalty customers yet');
         }
 
         return ListView.separated(
           padding: const EdgeInsets.all(16),
-          itemCount: sortedIds.length,
+          itemCount: docs.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
-            final id = sortedIds[index];
-            final count = stats[id]!;
-            final embeddedName = names[id];
+            final d = docs[index].data() as Map<String, dynamic>;
+            final customerId = d['customerId'] as String;
+            final totalVisits = (d['totalVisits'] as num?)?.toInt() ?? 0;
+            final lastStamp = (d['lastStampAt'] as Timestamp?)?.toDate();
+            final lastVisitStr = lastStamp != null
+                ? DateFormat('d MMM yyyy').format(lastStamp)
+                : '—';
 
             return FutureBuilder<String?>(
-              future: embeddedName != null
-                  ? Future.value(embeddedName)
-                  : _getCustomerName(id),
+              future: _getCustomerName(customerId),
               builder: (context, nameSnap) {
-                if (nameSnap.connectionState == ConnectionState.waiting &&
-                    embeddedName == null) {
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceContainerLowest,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Text('Loading customer...'),
-                  );
-                }
-                final name = nameSnap.data ?? embeddedName ?? 'Anonymous Customer';
+                final name = nameSnap.data ?? 'Anonymous Customer';
                 return Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -498,38 +483,78 @@ class _CustomerTab extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: AppColors.outlineVariant.withOpacity(0.3)),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CircleAvatar(
-                        backgroundColor: AppColors.primaryContainer,
-                        child: Text(name[0].toUpperCase(), style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Text(
-                          name,
-                          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '$count stamps',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: AppColors.primaryContainer,
+                            child: Text(
+                              name[0].toUpperCase(),
+                              style: const TextStyle(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  name,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                    color: AppColors.onSurface,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      PhosphorIcons.calendarBlank(PhosphorIconsStyle.fill),
+                                      size: 12,
+                                      color: AppColors.onSecondaryContainer.withOpacity(0.6),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Last visit: $lastVisitStr',
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.onSecondaryContainer.withOpacity(0.7),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              '$totalVisits visits',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 );
-              }
+              },
             );
           },
         );

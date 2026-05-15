@@ -78,7 +78,13 @@ class _VendorScannerScreenState extends State<VendorScannerScreen> {
   Future<_ScanResult> _redeemReward(String data) async {
     try {
       final parts = data.split('|');
-      final customerUid = parts[0];
+      final customerUid = parts[0].trim();
+      if (customerUid.isEmpty) {
+        return const _ScanResult(
+          success: false,
+          message: 'Invalid QR code. Please scan a customer\'s BinPerks QR code.',
+        );
+      }
       final String? customerNameFromQr = parts.length > 1 ? parts[1] : null;
 
       final vendorUid = FirebaseAuth.instance.currentUser!.uid;
@@ -107,6 +113,7 @@ class _VendorScannerScreenState extends State<VendorScannerScreen> {
         tx.update(loyaltyRef, {
           'redeemedCount': FieldValue.increment(1),
           'lastRedeemedAt': FieldValue.serverTimestamp(),
+          'lastVisitAt': FieldValue.serverTimestamp(),
         });
       });
 
@@ -145,10 +152,11 @@ class _VendorScannerScreenState extends State<VendorScannerScreen> {
         success: false,
         message: 'No rewards available\nto redeem for this customer.',
       );
-    } catch (_) {
-      return const _ScanResult(
+    } catch (e) {
+      debugPrint('Redeem error: $e');
+      return _ScanResult(
         success: false,
-        message: 'Something went wrong.\nPlease try again.',
+        message: 'Error: $e',
       );
     }
   }
@@ -156,7 +164,13 @@ class _VendorScannerScreenState extends State<VendorScannerScreen> {
   Future<_ScanResult> _awardStamp(String data) async {
     try {
       final parts = data.split('|');
-      final customerUid = parts[0];
+      final customerUid = parts[0].trim();
+      if (customerUid.isEmpty) {
+        return const _ScanResult(
+          success: false,
+          message: 'Invalid QR code. Please scan a customer\'s BinPerks QR code.',
+        );
+      }
       final String? customerNameFromQr = parts.length > 1 ? parts[1] : null;
 
       final vendorUid = FirebaseAuth.instance.currentUser!.uid;
@@ -208,15 +222,21 @@ class _VendorScannerScreenState extends State<VendorScannerScreen> {
               'stampCount': 0,
               'rewardCount': rewards + 1,
               'lastStampAt': FieldValue.serverTimestamp(),
+              'lastVisitAt': FieldValue.serverTimestamp(),
               'stampGoal': stampGoal,
               'rewardDescription': rewardDescription,
+              'canRate': true,
+              'totalVisits': FieldValue.increment(1),
             });
           } else {
             tx.update(loyaltyRef, {
               'stampCount': newStampCount,
               'lastStampAt': FieldValue.serverTimestamp(),
+              'lastVisitAt': FieldValue.serverTimestamp(),
               'stampGoal': stampGoal,
               'rewardDescription': rewardDescription,
+              'canRate': true,
+              'totalVisits': FieldValue.increment(1),
             });
           }
         } else {
@@ -232,8 +252,12 @@ class _VendorScannerScreenState extends State<VendorScannerScreen> {
             'stampGoal': stampGoal,
             'rewardDescription': rewardDescription,
             'rewardCount': 0,
+            'redeemedCount': 0,
+            'canRate': true,
             'lastStampAt': FieldValue.serverTimestamp(),
+            'lastVisitAt': FieldValue.serverTimestamp(),
             'joinedAt': FieldValue.serverTimestamp(),
+            'totalVisits': 1,
           });
         }
       });
@@ -302,15 +326,17 @@ class _VendorScannerScreenState extends State<VendorScannerScreen> {
         message:
             'This customer was stamped less than\nan hour ago. Come back later!',
       );
-    } catch (_) {
-      return const _ScanResult(
+    } catch (e) {
+      debugPrint('Stamp error: $e');
+      return _ScanResult(
         success: false,
-        message: 'Something went wrong.\nPlease try again.',
+        message: 'Error: $e',
       );
     }
   }
 
   Future<void> _reset() async {
+    if (!mounted) return;
     setState(() {
       _result = null;
       _isProcessing = false;
@@ -323,7 +349,6 @@ class _VendorScannerScreenState extends State<VendorScannerScreen> {
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.of(context).padding.top;
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(

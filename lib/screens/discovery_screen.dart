@@ -1,12 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../theme/app_colors.dart';
 import '../main.dart';
@@ -22,13 +21,13 @@ class DiscoveryScreen extends StatefulWidget {
 }
 
 class _DiscoveryScreenState extends State<DiscoveryScreen> {
-  static const _apiKey = 'AIzaSyDZ1detfI_VW8UKuG6K0NnTrwqxeEkfN9c';
 
   int _selectedCategory = 0;
   String _searchQuery = '';
   final _searchCtrl = TextEditingController();
   Position? _position;
   String? _locationName;
+  String? _locationFull;
   _LocState _locState = _LocState.loading;
   StreamSubscription<Position>? _posSub;
 
@@ -115,29 +114,44 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
   Future<void> _reverseGeocode(Position pos) async {
     try {
-      final uri = Uri.https(
-        'maps.googleapis.com',
-        '/maps/api/geocode/json',
-        {
-          'latlng': '${pos.latitude},${pos.longitude}',
-          'result_type': 'sublocality|locality',
-          'key': _apiKey,
-        },
-      );
-      final res = await http.get(uri);
-      if (!mounted) return;
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final results = data['results'] as List<dynamic>?;
-      if (results != null && results.isNotEmpty) {
-        final formatted =
-            results[0]['formatted_address'] as String? ?? '';
-        // Take just the first segment before a comma for a short label
-        final short = formatted.split(',').first.trim();
-        if (short.isNotEmpty && mounted) {
-          setState(() => _locationName = short);
-        }
+      final placemarks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+      if (!mounted || placemarks.isEmpty) {
+        debugPrint('[Geocode] no placemarks for ${pos.latitude},${pos.longitude}');
+        return;
       }
-    } catch (_) {}
+      final place = placemarks.first;
+
+      // Safely unwrap every field — the geocoder can return null for any of them
+      final subLocality     = place.subLocality     ?? '';
+      final locality        = place.locality        ?? '';
+      final name            = place.name            ?? '';
+      final street          = place.street          ?? '';
+      final adminArea       = place.administrativeArea ?? '';
+      final country         = place.country         ?? '';
+
+      // Best short label: subLocality → locality → name
+      final short = subLocality.isNotEmpty ? subLocality
+          : locality.isNotEmpty            ? locality
+          : name;
+
+      // Full readable address — only include non-empty parts
+      final full = [street, subLocality, locality, adminArea, country]
+          .where((s) => s.isNotEmpty)
+          .join(', ');
+
+      debugPrint('[Geocode] short="$short" full="$full"');
+
+      if (short.isNotEmpty && mounted) {
+        setState(() {
+          _locationName = short;
+          _locationFull = full.isNotEmpty ? full : short;
+        });
+      } else {
+        debugPrint('[Geocode] all fields empty — cannot resolve name');
+      }
+    } catch (e) {
+      debugPrint('[Geocode] error: $e');
+    }
   }
 
   // ── Distance helpers ──────────────────────────────────────────
@@ -210,7 +224,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.of(context).padding.top;
-    final selectedCat = _categories[_selectedCategory];
+    final selectedCat = _categories[_selectedCategory.clamp(0, _categories.length - 1)];
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -260,6 +274,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                       child: _LocationBar(
                         locState: _locState,
                         locationName: _locationName,
+                        locationFull: _locationFull,
                         position: _position,
                         onRetry: _initLocation,
                         onOpenSettings: Geolocator.openAppSettings,
@@ -493,15 +508,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
             },
           ),
 
-          // Map FAB
-          Positioned(
-            bottom: 100,
-            right: 20,
-            child: _PrimaryFAB(
-              icon: PhosphorIcons.mapTrifold(PhosphorIconsStyle.fill),
-              onTap: () {},
-            ),
-          ),
         ],
       ),
     );
@@ -515,6 +521,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 class _LocationBar extends StatelessWidget {
   final _LocState locState;
   final String? locationName;
+  final String? locationFull;
   final Position? position;
   final VoidCallback onRetry;
   final Future<bool> Function() onOpenSettings;
@@ -522,10 +529,102 @@ class _LocationBar extends StatelessWidget {
   const _LocationBar({
     required this.locState,
     required this.locationName,
+    required this.locationFull,
     required this.position,
     required this.onRetry,
     required this.onOpenSettings,
   });
+
+  void _showFullAddress(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.outlineVariant,
+                borderRadius: BorderRadius.circular(9999),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    PhosphorIcons.mapPin(PhosphorIconsStyle.fill),
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Your Location',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.onSecondaryContainer,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        locationName ?? '',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (locationFull != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  locationFull!,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.onSecondaryContainer,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -543,14 +642,19 @@ class _LocationBar extends StatelessWidget {
               strokeWidth: 2, color: AppColors.primary),
         );
       case _LocState.active:
-        label = locationName ??
-            '${position!.latitude.toStringAsFixed(4)}, '
-                '${position!.longitude.toStringAsFixed(4)}';
-        trailing = Icon(
-          PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-          color: AppColors.primary,
-          size: 18,
-        );
+        label = locationName ?? 'Locating neighbourhood…';
+        trailing = locationName != null
+            ? Icon(
+                PhosphorIcons.caretRight(PhosphorIconsStyle.bold),
+                color: AppColors.onSecondaryContainer,
+                size: 16,
+              )
+            : const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.primary),
+              );
       case _LocState.denied:
         label = 'Location denied — tap to retry';
         labelColor = AppColors.error;
@@ -579,7 +683,9 @@ class _LocationBar extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        if (locState == _LocState.deniedForever ||
+        if (locState == _LocState.active && locationName != null) {
+          _showFullAddress(context);
+        } else if (locState == _LocState.deniedForever ||
             locState == _LocState.serviceOff) {
           onOpenSettings();
         } else if (locState == _LocState.denied) {
@@ -819,43 +925,6 @@ class _Placeholder extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// FAB
-// ─────────────────────────────────────────────────────────────────
-
-class _PrimaryFAB extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _PrimaryFAB({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 60,
-        height: 60,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [AppColors.primary, AppColors.primaryContainer],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(9999),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.38),
-              blurRadius: 24,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Icon(icon, color: AppColors.onPrimary, size: 28),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────
 // Business join bottom sheet
 // ─────────────────────────────────────────────────────────────────
 
@@ -885,9 +954,11 @@ class _BusinessSheetState extends State<_BusinessSheet> {
     try {
       final d = widget.data;
       final stampGoal = (d['stampGoal'] as num?)?.toInt() ?? 10;
+      final loyaltyDocId = '${widget.customerId}_${widget.businessId}';
+      debugPrint('[Discovery] joining loyalty docId=$loyaltyDocId');
       await FirebaseFirestore.instance
           .collection('loyalties')
-          .doc('${widget.customerId}_${widget.businessId}')
+          .doc(loyaltyDocId)
           .set({
         'customerId': widget.customerId,
         'businessId': widget.businessId,
@@ -898,9 +969,12 @@ class _BusinessSheetState extends State<_BusinessSheet> {
         'stampGoal': stampGoal,
         'rewardDescription': d['rewardDescription'] as String? ?? '',
         'rewardCount': 0,
+        'redeemedCount': 0,
+        'canRate': false,
         'joinedAt': FieldValue.serverTimestamp(),
-      });
-      widget.onJoined(); // Trigger the callback
+      }, SetOptions(merge: true));
+      debugPrint('[Discovery] loyalty created: $loyaltyDocId');
+      widget.onJoined();
     } finally {
       if (mounted) setState(() => _joining = false);
     }
@@ -963,6 +1037,7 @@ class _BusinessSheetState extends State<_BusinessSheet> {
     final imageUrl = d['imageUrl'] as String?;
     final stampGoal = (d['stampGoal'] as num?)?.toInt() ?? 10;
     final rewardDesc = d['rewardDescription'] as String? ?? '';
+    final phoneNumber = d['phoneNumber'] as String? ?? '';
     final loyaltyDocId = '${widget.customerId}_${widget.businessId}';
 
     return Container(
@@ -1067,6 +1142,34 @@ class _BusinessSheetState extends State<_BusinessSheet> {
                               Expanded(
                                 child: Text(
                                   d['address'] as String,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.onSurface,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Divider(height: 1, thickness: 0.5, color: AppColors.outlineVariant),
+                          ),
+                        ],
+                        if (phoneNumber.isNotEmpty) ...[
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                PhosphorIcons.phone(PhosphorIconsStyle.fill),
+                                color: AppColors.primary,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  phoneNumber,
                                   style: GoogleFonts.beVietnamPro(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,

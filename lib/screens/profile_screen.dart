@@ -5,10 +5,12 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_provider.dart';
+import 'customer_reward_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -335,6 +337,243 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // ── Reward Archive Card ─────────────────────────────────────────
+
+  Widget _buildRewardArchiveCard(String uid) {
+    if (uid.isEmpty) return const SizedBox.shrink();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('redemptions')
+          .where('customerId', isEqualTo: uid)
+          .orderBy('redeemedAt', descending: true)
+          .limit(50)
+          .snapshots(),
+      builder: (context, snap) {
+        final hasError = snap.hasError;
+        final docs = snap.data?.docs ?? [];
+        final total = docs.length;
+        final peek = docs.take(2).toList();
+
+        return GestureDetector(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => const CustomerRewardHistoryScreen()),
+          ),
+          onLongPress: total == 0
+              ? null
+              : () => _showClearDialog(
+                    context,
+                    title: 'Clear Reward Archive?',
+                    message:
+                        'This will permanently delete all $total reward records.',
+                    onConfirm: () => _clearRewardArchive(uid, docs),
+                  ),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                  color: AppColors.outlineVariant.withValues(alpha: 0.4)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7C3AED).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        PhosphorIcons.gift(PhosphorIconsStyle.fill),
+                        color: const Color(0xFF7C3AED),
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Reward Archive',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.onSurface,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7C3AED).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(9999),
+                      ),
+                      child: Text(
+                        '$total',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF7C3AED),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (total > 0) ...[
+                  const SizedBox(height: 12),
+                  const Divider(height: 1, thickness: 0.5),
+                  const SizedBox(height: 12),
+                  ...peek.map((doc) {
+                    final d = doc.data() as Map<String, dynamic>;
+                    final businessName =
+                        d['businessName'] as String? ?? 'Unknown Business';
+                    final rewardDescription =
+                        d['rewardDescription'] as String? ?? 'Reward';
+                    final ts = d['redeemedAt'] as Timestamp?;
+                    final date =
+                        ts != null ? DateFormat('d MMM').format(ts.toDate()) : '';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              businessName,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.onSurface,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            rewardDescription,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              color: AppColors.onSecondaryContainer,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (date.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Text(
+                              date,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 10,
+                                color: AppColors.onSecondaryContainer
+                                    .withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  }),
+                  if (total > 2)
+                    Center(
+                      child: Text(
+                        '${total - 2} more in archive',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF7C3AED),
+                        ),
+                      ),
+                    ),
+                ] else
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Row(
+                      children: [
+                        Icon(
+                          PhosphorIcons.gift(PhosphorIconsStyle.regular),
+                          size: 16,
+                          color: AppColors.onSecondaryContainer
+                              .withValues(alpha: 0.4),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          hasError
+                              ? 'Unable to load archive. Tap to view history.'
+                              : 'No rewards redeemed yet',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.onSecondaryContainer,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _clearRewardArchive(
+      String uid, List<QueryDocumentSnapshot> docs) async {
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Error clearing reward archive: $e');
+    }
+  }
+
+  void _showClearDialog(BuildContext context,
+      {required String title,
+      required String message,
+      required VoidCallback onConfirm}) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title,
+            style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w800, fontSize: 16)),
+        content: Text(message,
+            style: GoogleFonts.beVietnamPro(fontSize: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel',
+                style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              onConfirm();
+            },
+            child: Text('Delete',
+                style: GoogleFonts.beVietnamPro(
+                    fontWeight: FontWeight.w700, color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.of(context).padding.top;
@@ -610,9 +849,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 28),
 
-            // ── Reward History ────────────────────────────────────────
+            // ── Reward Archive ────────────────────────────────────────
             Text(
-              'Reward History',
+              'Reward Archive',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -620,7 +859,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            _RewardHistory(uid: user?.uid ?? ''),
+            _buildRewardArchiveCard(user?.uid ?? ''),
 
             const SizedBox(height: 28),
 
@@ -725,177 +964,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-// ── Reward history widget ─────────────────────────────────────────
-
-class _RewardHistory extends StatelessWidget {
-  final String uid;
-  const _RewardHistory({required this.uid});
-
-  @override
-  Widget build(BuildContext context) {
-    if (uid.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
-          .collection('redemptions')
-          .where('customerId', isEqualTo: uid)
-          .orderBy('redeemedAt', descending: true)
-          .limit(20)
-          .get(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.primary,
-              ),
-            ),
-          );
-        }
-
-        final docs = snap.data?.docs ?? [];
-
-        if (docs.isEmpty) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  PhosphorIcons.gift(PhosphorIconsStyle.regular),
-                  size: 32,
-                  color: AppColors.onSecondaryContainer
-                      .withValues(alpha: 0.4),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'No rewards redeemed yet',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.onSecondaryContainer,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return Container(
-          decoration: BoxDecoration(
-            color: AppColors.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppColors.outlineVariant.withValues(alpha: 0.2),
-            ),
-          ),
-          child: Column(
-            children: docs.asMap().entries.map((entry) {
-              final idx = entry.key;
-              final doc = entry.value;
-              final d = doc.data() as Map<String, dynamic>;
-              final businessName =
-                  d['businessName'] as String? ?? 'Unknown Business';
-              final rewardDescription =
-                  d['rewardDescription'] as String? ?? 'Reward';
-              final ts = d['redeemedAt'] as Timestamp?;
-              final date = ts != null
-                  ? _formatDate(ts.toDate())
-                  : '—';
-
-              return Column(
-                children: [
-                  if (idx > 0)
-                    Divider(
-                      height: 1,
-                      color: AppColors.outlineVariant.withValues(alpha: 0.2),
-                      indent: 56,
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF7C3AED),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Icon(
-                              PhosphorIcons.gift(PhosphorIconsStyle.fill),
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                businessName,
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.onSurface,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                rewardDescription,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.onSecondaryContainer,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          date,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.onSecondaryContainer,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            }).toList(),
-          ),
-        );
-      },
-    );
-  }
-
-  String _formatDate(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inDays == 0) return 'Today';
-    if (diff.inDays == 1) return 'Yesterday';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return '${dt.day}/${dt.month}/${dt.year}';
-  }
-}
-
 // ── Stat chip ─────────────────────────────────────────────────────
 
 class _StatChip extends StatelessWidget {
@@ -907,30 +975,41 @@ class _StatChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = context.watch<ThemeProvider>().isDarkMode;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          value,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: isDark ? AppColors.darkOnSurface : AppColors.onSurface,
+    return SizedBox(
+      width: 56,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: isDark ? AppColors.darkOnSurface : AppColors.onSurface,
+              ),
+            ),
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: isDark
-                ? AppColors.darkOnSurfaceVariant
-                : AppColors.onSecondaryContainer,
-            letterSpacing: 0.3,
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            softWrap: true,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: isDark
+                  ? AppColors.darkOnSurfaceVariant
+                  : AppColors.onSecondaryContainer,
+              letterSpacing: 0.3,
+              height: 1.2,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
