@@ -61,6 +61,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   @override
   void dispose() {
     _posSub?.cancel();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -243,8 +244,8 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                 }).where((b) {
                   final status = b['status'] == 'approved';
                   final notPaused = b['isPaused'] != true;
-                  final matchesSearch = _searchQuery.isEmpty || 
-                      (b['name'] as String).toLowerCase().contains(_searchQuery.toLowerCase());
+                  final matchesSearch = _searchQuery.isEmpty ||
+                      (b['name'] as String? ?? '').toLowerCase().contains(_searchQuery.toLowerCase());
                   return status && notPaused && matchesSearch;
                 }).toList();
 
@@ -419,7 +420,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                       child: SizedBox(height: 24)),
 
                   // Business list
-                  if (snap.connectionState == ConnectionState.waiting)
+                  if (snap.connectionState == ConnectionState.waiting && !snap.hasData)
                     const SliverToBoxAdapter(
                       child: Padding(
                         padding: EdgeInsets.all(48),

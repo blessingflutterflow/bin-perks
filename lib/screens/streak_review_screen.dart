@@ -21,6 +21,8 @@ class _LoyaltyCard {
   final String rewardDescription;
   final int rewardCount;
   final int redeemedCount;
+  final bool canRate;
+  final int? totalVisits;
 
   int get pendingRewards => rewardCount - redeemedCount;
 
@@ -35,6 +37,8 @@ class _LoyaltyCard {
     required this.rewardDescription,
     required this.rewardCount,
     required this.redeemedCount,
+    required this.canRate,
+    this.totalVisits,
   });
 
   factory _LoyaltyCard.fromDoc(QueryDocumentSnapshot doc) {
@@ -52,6 +56,8 @@ class _LoyaltyCard {
           'Complete your card to earn a reward!',
       rewardCount: (d['rewardCount'] as num?)?.toInt() ?? 0,
       redeemedCount: (d['redeemedCount'] as num?)?.toInt() ?? 0,
+      canRate: d['canRate'] as bool? ?? false,
+      totalVisits: (d['totalVisits'] as num?)?.toInt(),
     );
   }
 }
@@ -66,7 +72,7 @@ class StreakReviewScreen extends StatefulWidget {
 }
 
 class _StreakReviewScreenState extends State<StreakReviewScreen> {
-  final _uid = FirebaseAuth.instance.currentUser!.uid;
+  final _uid = FirebaseAuth.instance.currentUser?.uid ?? '';
   final _pageController = PageController();
   late final Stream<QuerySnapshot> _loyaltiesStream;
   int _currentPage = 0;
@@ -74,6 +80,7 @@ class _StreakReviewScreenState extends State<StreakReviewScreen> {
   @override
   void initState() {
     super.initState();
+    debugPrint('[StreakReview] initState uid=$_uid');
     _loyaltiesStream = FirebaseFirestore.instance
         .collection('loyalties')
         .where('customerId', isEqualTo: _uid)
@@ -102,11 +109,57 @@ class _StreakReviewScreenState extends State<StreakReviewScreen> {
           );
         }
 
-        final cards = (snap.data?.docs ?? [])
-            .map(_LoyaltyCard.fromDoc)
-            .toList();
+        if (snap.hasError) {
+          final err = snap.error;
+          debugPrint('[StreakReview] loyalties stream error: $err');
+          return Scaffold(
+            backgroundColor: AppColors.surface,
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.error_outline, color: AppColors.error, size: 48),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Could not load your loyalty cards',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.onSurface,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      err.toString(),
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: AppColors.error,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        debugPrint('[StreakReview] loyalties snapshot: ${snap.data?.docs.length ?? 0} docs');
+
+        List<_LoyaltyCard> cards = [];
+        for (final doc in snap.data?.docs ?? []) {
+          try {
+            cards.add(_LoyaltyCard.fromDoc(doc));
+          } catch (e) {
+            debugPrint('[StreakReview] failed to parse loyalty doc ${doc.id}: $e');
+          }
+        }
 
         if (cards.isEmpty) {
+          debugPrint('[StreakReview] no loyalty cards found for uid: $_uid');
           return Scaffold(
             backgroundColor: AppColors.surface,
             body: _EmptyState(topPad: topPad),
@@ -125,7 +178,11 @@ class _StreakReviewScreenState extends State<StreakReviewScreen> {
                 itemCount: pageCount,
                 onPageChanged: (i) => setState(() => _currentPage = i),
                 itemBuilder: (context, index) =>
-                    _BusinessReviewPage(card: cards[index], topPad: topPad),
+                    _BusinessReviewPage(
+                      key: ValueKey(cards[index].docId),
+                      card: cards[index],
+                      topPad: topPad,
+                    ),
               ),
 
               // Page indicator dots
@@ -258,7 +315,7 @@ class _EmptyState extends StatelessWidget {
 class _BusinessReviewPage extends StatefulWidget {
   final _LoyaltyCard card;
   final double topPad;
-  const _BusinessReviewPage({required this.card, required this.topPad});
+  _BusinessReviewPage({super.key, required this.card, required this.topPad});
 
   @override
   State<_BusinessReviewPage> createState() => _BusinessReviewPageState();
@@ -266,7 +323,6 @@ class _BusinessReviewPage extends StatefulWidget {
 
 class _BusinessReviewPageState extends State<_BusinessReviewPage> {
   int? _selectedEmoji;
-  String? _reviewDocId;
   bool _reviewSubmitted = false; // true once feedback is fully submitted
   final _commentController = TextEditingController();
   String? _customerName;
@@ -275,6 +331,30 @@ class _BusinessReviewPageState extends State<_BusinessReviewPage> {
   void initState() {
     super.initState();
     _fetchCustomerName();
+    // Show "already submitted" if rating is locked and the user has visited before
+    _reviewSubmitted = !widget.card.canRate &&
+        (widget.card.stampCount > 0 ||
+            widget.card.rewardCount > 0 ||
+            (widget.card.totalVisits ?? 0) > 0);
+  }
+
+  @override
+  void didUpdateWidget(_BusinessReviewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.card.canRate != widget.card.canRate) {
+      setState(() {
+        if (widget.card.canRate) {
+          // Vendor scanned — unlock review
+          _reviewSubmitted = false;
+          _selectedEmoji = null;
+        } else {
+          // Locked (review submitted or reset) — show submitted state if there is activity
+          _reviewSubmitted = widget.card.stampCount > 0 ||
+              widget.card.rewardCount > 0 ||
+              (widget.card.totalVisits ?? 0) > 0;
+        }
+      });
+    }
   }
 
   Future<void> _fetchCustomerName() async {
@@ -606,72 +686,68 @@ class _BusinessReviewPageState extends State<_BusinessReviewPage> {
         ),
         const SizedBox(height: 16),
 
-        // ── Reward circles ────────────────────────────────────────
-        // Each circle is one of three states:
-        //   REDEEMED  (i < redeemed)  — grey + checkmark
-        //   PENDING   (i < lifetime)  — purple + gift, claimable
-        //   FUTURE    (i >= lifetime) — outlined empty
-        Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: List.generate(displayCount, (i) {
-            final isRedeemed = i < redeemed;
-            final isPending  = !isRedeemed && i < lifetime;
-
-            Color bgColor;
-            Color borderColor;
-            Widget icon;
-
-            if (isRedeemed) {
-              bgColor     = AppColors.outline.withValues(alpha: 0.18);
-              borderColor = AppColors.outline.withValues(alpha: 0.40);
-              icon = Icon(
-                PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-                size: 20,
-                color: AppColors.onSecondaryContainer.withValues(alpha: 0.55),
-              );
-            } else if (isPending) {
-              bgColor     = const Color(0xFF7C3AED);
-              borderColor = const Color(0xFF7C3AED);
-              icon = Icon(
-                PhosphorIcons.gift(PhosphorIconsStyle.fill),
-                size: 20,
-                color: Colors.white,
-              );
-            } else {
-              bgColor     = Colors.transparent;
-              borderColor = AppColors.outline;
-              icon = Icon(
-                PhosphorIcons.gift(PhosphorIconsStyle.regular),
-                size: 20,
-                color: AppColors.onSecondaryContainer.withValues(alpha: 0.40),
-              );
-            }
-
-            return Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.easeOutBack,
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: borderColor, width: 2),
-                  boxShadow: isPending
-                      ? [
-                          BoxShadow(
-                            color: const Color(0xFF7C3AED).withValues(alpha: 0.30),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : null,
+        // ── Single reward box with badge ──────────────────────────
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: hasReward
+                    ? const Color(0xFF7C3AED)
+                    : AppColors.surfaceContainerHigh,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: hasReward
+                      ? const Color(0xFF7C3AED)
+                      : AppColors.outline,
+                  width: 2,
                 ),
-                child: Center(child: icon),
+                boxShadow: hasReward
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xFF7C3AED).withValues(alpha: 0.30),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
               ),
-            );
-          }),
+              child: Center(
+                child: Icon(
+                  PhosphorIcons.gift(
+                    hasReward ? PhosphorIconsStyle.fill : PhosphorIconsStyle.regular,
+                  ),
+                  size: 24,
+                  color: hasReward
+                      ? Colors.white
+                      : AppColors.onSecondaryContainer.withValues(alpha: 0.40),
+                ),
+              ),
+            ),
+            if (lifetime > 0)
+              Positioned(
+                top: -4,
+                right: -4,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.error,
+                    borderRadius: BorderRadius.circular(9999),
+                    border: Border.all(color: AppColors.surface, width: 2),
+                  ),
+                  child: Text(
+                    '$lifetime',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
 
         // ── "X stamps until next reward" strip ───────────────────
@@ -771,6 +847,20 @@ class _BusinessReviewPageState extends State<_BusinessReviewPage> {
   }
 
   Widget _buildEmojiReview() {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('loyalties')
+          .doc(widget.card.docId)
+          .snapshots(),
+      builder: (context, snap) {
+        final data = snap.data?.data() as Map<String, dynamic>?;
+        final canRate = data?['canRate'] as bool? ?? false;
+        debugPrint('[StreakReview] loyalty ${widget.card.docId} canRate=$canRate reviewSubmitted=$_reviewSubmitted');
+
+        if (!canRate) {
+          return _buildLockedReviewState();
+        }
+
     return Column(
       children: [
         StreamBuilder<DocumentSnapshot>(
@@ -802,7 +892,6 @@ class _BusinessReviewPageState extends State<_BusinessReviewPage> {
                 setState(() => _selectedEmoji = index);
                 // Play bell sound when rating is selected
                 SoundService().playRatingSound(index);
-                _saveRating(index);
               },
               child: Column(
                 children: [
@@ -920,17 +1009,24 @@ class _BusinessReviewPageState extends State<_BusinessReviewPage> {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () async {
-                await _saveComment();
-                if (mounted) {
+                final error = await _submitReview();
+                if (!mounted) return;
+                if (error == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Thank you for your feedback!')),
                   );
-                  // Reset state so the next review is a brand new document
                   setState(() {
-                    _reviewDocId = null;
                     _selectedEmoji = null;
                     _reviewSubmitted = true;
                   });
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Review failed: $error'),
+                      backgroundColor: AppColors.error,
+                      duration: const Duration(seconds: 6),
+                    ),
+                  );
                 }
               },
               style: ElevatedButton.styleFrom(
@@ -953,50 +1049,108 @@ class _BusinessReviewPageState extends State<_BusinessReviewPage> {
         ],
       ],
     );
-  }
-
-  Future<void> _saveRating(int ratingIndex) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      final businessId = widget.card.businessId;
-      if (user == null || businessId.isEmpty) return;
-
-      // Always create a new review doc — never reuse one from a previous
-      // submission. _reviewDocId is only reused when the user is still
-      // choosing their emoji in the SAME review session (before Submit).
-      if (_reviewDocId == null) {
-        final docRef = await FirebaseFirestore.instance.collection('reviews').add({
-          'customerId': user.uid,
-          'customerName': _customerName,
-          'businessId': businessId,
-          'businessName': widget.card.businessName,
-          'rating': ratingIndex,
-          'ratingLabel': _emojis[ratingIndex]['label'],
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-        setState(() => _reviewDocId = docRef.id);
-      } else {
-        // User changed their emoji within the same session — update in-place
-        await FirebaseFirestore.instance.collection('reviews').doc(_reviewDocId!).update({
-          'rating': ratingIndex,
-          'ratingLabel': _emojis[ratingIndex]['label'],
-        });
       }
-    } catch (e) {
-      debugPrint('Error saving rating: $e');
-    }
+    );
   }
 
-  Future<void> _saveComment() async {
-    if (_reviewDocId == null || _commentController.text.trim().isEmpty) return;
+  Widget _buildLockedReviewState() {
+    final isAlreadySubmitted = _reviewSubmitted;
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: AppColors.outlineVariant.withValues(alpha: 0.18),
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                isAlreadySubmitted
+                    ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
+                    : PhosphorIcons.lock(PhosphorIconsStyle.fill),
+                color: isAlreadySubmitted ? const Color(0xFF00875A) : AppColors.onSecondaryContainer,
+                size: 40,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                isAlreadySubmitted
+                    ? 'Thanks for your feedback!'
+                    : 'Rating locked',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.onSurface,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isAlreadySubmitted
+                    ? 'Your review has been saved. Visit the business again and have your QR scanned to leave another rating.'
+                    : 'Have your QR code scanned at the business to unlock rating.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.onSecondaryContainer,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<String?> _submitReview() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final businessId = widget.card.businessId;
+    final ratingIndex = _selectedEmoji;
+    if (user == null || businessId.isEmpty || ratingIndex == null) {
+      return 'Missing user, business, or rating.';
+    }
+
+    final comment = _commentController.text.trim();
+
     try {
-      await FirebaseFirestore.instance.collection('reviews').doc(_reviewDocId!).update({
-        'comment': _commentController.text.trim(),
+      // Atomically create review and lock the gate
+      final batch = FirebaseFirestore.instance.batch();
+
+      final reviewRef = FirebaseFirestore.instance.collection('reviews').doc();
+      batch.set(reviewRef, {
+        'customerId': user.uid,
+        'customerName': _customerName,
+        'businessId': businessId,
+        'businessName': widget.card.businessName,
+        'rating': ratingIndex,
+        'ratingLabel': _emojis[ratingIndex]['label'],
+        if (comment.isNotEmpty) 'comment': comment,
+        'createdAt': FieldValue.serverTimestamp(),
       });
+
+      final loyaltyRef = FirebaseFirestore.instance
+          .collection('loyalties')
+          .doc(widget.card.docId);
+      // Use set(merge: true) instead of update so it works even if the doc is missing
+      batch.set(
+        loyaltyRef,
+        {'canRate': false},
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+
       _commentController.clear();
       FocusScope.of(context).unfocus();
+      return null; // success
     } catch (e) {
-      debugPrint('Error saving comment: $e');
+      debugPrint('Review submission failed: $e');
+      return e.toString();
     }
   }
 }

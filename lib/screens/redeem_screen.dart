@@ -86,6 +86,7 @@ class _RedeemScreenState extends State<RedeemScreen> {
 
   void _startTimer() {
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
       if (_remaining > 0) {
         setState(() => _remaining--);
       } else {

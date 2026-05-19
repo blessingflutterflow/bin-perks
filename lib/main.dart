@@ -17,15 +17,29 @@ import 'screens/vendor/vendor_shell.dart';
 import 'screens/vendor/waiting_approval_screen.dart';
 import 'screens/vendor/vendor_rejected_screen.dart';
 import 'screens/vendor/vendor_suspended_screen.dart';
+import 'screens/admin/admin_dashboard_screen.dart';
 import 'widgets/bottom_nav_bar.dart';
 
 final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+final _navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // Keep the full Firestore cache so cached documents are available
+  // instantly on every re-open, eliminating the loading flash.
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
+
   FCMService.messengerKey = _scaffoldMessengerKey;
-  await FCMService.initialize();
+  FCMService.navigatorKey = _navigatorKey;
+  // Not awaited — the permission dialog (Android 13+) and token fetch
+  // run after the UI is visible instead of blocking the first frame.
+  FCMService.initialize();
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -51,6 +65,7 @@ class BinPerksApp extends StatelessWidget {
       title: 'Bin Perks',
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _scaffoldMessengerKey,
+      navigatorKey: _navigatorKey,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
@@ -70,6 +85,10 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
+          final currentUser = FirebaseAuth.instance.currentUser;
+          if (currentUser != null) {
+            return _RoleRouter(user: currentUser);
+          }
           return const _Splash();
         }
         if (!snap.hasData) return const LoginScreen();
@@ -110,12 +129,13 @@ class _RoleRouter extends StatelessWidget {
           .doc(user.uid)
           .snapshots(),
       builder: (context, userSnap) {
-        if (userSnap.connectionState == ConnectionState.waiting) {
+        if (userSnap.connectionState == ConnectionState.waiting && !userSnap.hasData) {
           return const _Splash();
         }
         final data = userSnap.data?.data() as Map<String, dynamic>?;
         final role = data?['role'] as String? ?? 'customer';
 
+        if (role == 'admin') return const AdminDashboardScreen();
         if (role != 'vendor') return const AppShell();
 
         // Vendor: gate on whether their business doc exists and is approved
@@ -125,7 +145,7 @@ class _RoleRouter extends StatelessWidget {
               .doc(user.uid)
               .snapshots(),
           builder: (context, bizSnap) {
-            if (bizSnap.connectionState == ConnectionState.waiting) {
+            if (bizSnap.connectionState == ConnectionState.waiting && !bizSnap.hasData) {
               return const _Splash();
             }
             if (bizSnap.data?.exists == true) {
@@ -169,12 +189,22 @@ class AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: true,
-      body: IndexedStack(index: _currentIndex, children: _screens),
-      bottomNavigationBar: BinPerksBottomNav(
-        currentIndex: _currentIndex,
-        onTap: setTab,
+    return PopScope(
+      // Only allow the system pop (exit) when already on the first tab
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          // Back pressed on a non-home tab → return to Discover
+          setState(() => _currentIndex = 0);
+        }
+      },
+      child: Scaffold(
+        extendBody: true,
+        body: IndexedStack(index: _currentIndex, children: _screens),
+        bottomNavigationBar: BinPerksBottomNav(
+          currentIndex: _currentIndex,
+          onTap: setTab,
+        ),
       ),
     );
   }

@@ -18,6 +18,7 @@ class VendorProfileScreen extends StatefulWidget {
 
 class _VendorProfileScreenState extends State<VendorProfileScreen> {
   final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final _rewardCtrl = TextEditingController();
   String _address = '';
   double? _lat;
@@ -62,12 +63,14 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _phoneCtrl.dispose();
     _rewardCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
     final doc = await FirebaseFirestore.instance
         .collection('businesses')
         .doc(uid)
@@ -77,6 +80,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       final data = doc.data()!;
       setState(() {
         _nameCtrl.text = data['name'] as String? ?? '';
+        _phoneCtrl.text = data['phoneNumber'] as String? ?? '';
         _address = data['address'] as String? ?? '';
         _lat = (data['lat'] as num?)?.toDouble();
         _lng = (data['lng'] as num?)?.toDouble();
@@ -127,7 +131,8 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       _success = null;
     });
     try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
       String? imageUrl = _currentImageUrl;
       if (_newImage != null) {
         final bytes = await _newImage!.readAsBytes();
@@ -140,6 +145,7 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
           .doc(uid)
           .update({
             'name': name,
+            'phoneNumber': _phoneCtrl.text.trim(),
             'address': _address,
             'category': _category,
             'stampGoal': _stampGoal,
@@ -216,19 +222,47 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    setState(() { _saving = true; _error = null; });
     try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-      await FirebaseFirestore.instance
-          .collection('businesses')
-          .doc(uid)
-          .delete();
-      await FirebaseFirestore.instance.collection('users').doc(uid).delete();
-      await FirebaseAuth.instance.currentUser!.delete();
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      // Delete the Firebase Auth account FIRST. This is the step most
+      // likely to fail (requires-recent-login). If it throws, nothing in
+      // Firestore has been touched yet and the vendor can retry after
+      // logging back in. If it succeeds, the Firestore cleanup below runs
+      // — even if those fail the auth account is gone so orphaned docs
+      // are invisible to the vendor.
+      await FirebaseAuth.instance.currentUser?.delete();
+
+      try {
+        await FirebaseFirestore.instance
+            .collection('businesses')
+            .doc(uid)
+            .delete();
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .delete();
+      } catch (_) {
+        // Firestore cleanup failed — orphaned docs are harmless since the
+        // auth account no longer exists and no one can log in to see them.
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = e.code == 'requires-recent-login'
+              ? 'For security, please log out and log back in, then try deleting again.'
+              : 'Failed to delete. Please try again.';
+        });
+      }
     } catch (_) {
       if (mounted) {
-        setState(
-          () => _error = 'Failed to delete. Please re-login and try again.',
-        );
+        setState(() {
+          _saving = false;
+          _error = 'Failed to delete. Please try again.';
+        });
       }
     }
   }
@@ -529,6 +563,16 @@ class _VendorProfileScreenState extends State<VendorProfileScreen> {
             _Label('Business Name'),
             const SizedBox(height: 8),
             _EditField(controller: _nameCtrl, hint: 'e.g. The Daily Grind'),
+
+            const SizedBox(height: 20),
+
+            // ── Phone Number ──────────────────────────────────────
+            _Label('Phone Number'),
+            const SizedBox(height: 8),
+            _EditField(
+              controller: _phoneCtrl,
+              hint: 'e.g. +27 71 234 5678',
+            ),
 
             const SizedBox(height: 20),
 

@@ -19,6 +19,7 @@ class VendorOnboardingScreen extends StatefulWidget {
 
 class _VendorOnboardingScreenState extends State<VendorOnboardingScreen> {
   final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final _rewardCtrl = TextEditingController();
   String _address = '';
   double? _lat;
@@ -65,6 +66,7 @@ class _VendorOnboardingScreenState extends State<VendorOnboardingScreen> {
     if (widget.initialData != null) {
       final data = widget.initialData!;
       _nameCtrl.text = data['name'] as String? ?? '';
+      _phoneCtrl.text = data['phoneNumber'] as String? ?? '';
       _rewardCtrl.text = data['rewardDescription'] as String? ?? '';
       _address = data['address'] as String? ?? '';
       _lat = data['lat'] as double?;
@@ -81,6 +83,7 @@ class _VendorOnboardingScreenState extends State<VendorOnboardingScreen> {
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _phoneCtrl.dispose();
     _rewardCtrl.dispose();
     super.dispose();
   }
@@ -237,7 +240,8 @@ class _VendorOnboardingScreenState extends State<VendorOnboardingScreen> {
     });
 
     try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
       String? imageUrl;
 
       if (_image != null) {
@@ -251,6 +255,7 @@ class _VendorOnboardingScreenState extends State<VendorOnboardingScreen> {
 
       await FirebaseFirestore.instance.collection('businesses').doc(uid).set({
         'name': name,
+        'phoneNumber': _phoneCtrl.text.trim(),
         'address': _address,
         'category': _category,
         'imageUrl': imageUrl,
@@ -419,6 +424,17 @@ class _VendorOnboardingScreenState extends State<VendorOnboardingScreen> {
             _Field(
               controller: _nameCtrl,
               hint: 'e.g. The Daily Grind',
+              action: TextInputAction.next,
+            ),
+
+            const SizedBox(height: 20),
+
+            // ── Phone Number ───────────────────────────────────────
+            _Label('Phone Number'),
+            const SizedBox(height: 8),
+            _Field(
+              controller: _phoneCtrl,
+              hint: 'e.g. +27 71 234 5678',
               action: TextInputAction.next,
             ),
 

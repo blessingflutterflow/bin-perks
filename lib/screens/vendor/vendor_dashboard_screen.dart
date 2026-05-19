@@ -54,6 +54,7 @@ class VendorDashboardScreen extends StatelessWidget {
           SliverToBoxAdapter(child: _buildReviews(vendorId)),
           SliverToBoxAdapter(child: _ReviewEditorSection(vendorId: vendorId)),
           SliverToBoxAdapter(child: _buildCooldown(vendorId)),
+          SliverToBoxAdapter(child: _buildThankYouDelay(vendorId)),
           const SliverToBoxAdapter(child: SizedBox(height: 120)),
         ],
       ),
@@ -209,17 +210,6 @@ class VendorDashboardScreen extends StatelessWidget {
                   'Unable to load stats. Please try again.',
                   style: GoogleFonts.beVietnamPro(
                       fontSize: 13, color: AppColors.error),
-                ),
-              );
-            }
-            if (!stampsSnap.hasData || !redeemSnap.hasData) {
-              return const Padding(
-                padding: EdgeInsets.fromLTRB(16, 20, 16, 0),
-                child: SizedBox(
-                  height: 60,
-                  child: Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
                 ),
               );
             }
@@ -568,24 +558,6 @@ class VendorDashboardScreen extends StatelessWidget {
                 .snapshots()
           : null,
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return _Section(
-            title: 'Reviews Archive',
-            child: const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.primary,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }
         if (snap.hasError) {
           return _Section(
             title: 'Reviews Archive',
@@ -890,6 +862,93 @@ class VendorDashboardScreen extends StatelessWidget {
                   }).toList(),
                 ),
               ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Thank You Notification Delay ─────────────────────────────────
+
+  Widget _buildThankYouDelay(String? vendorId) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: vendorId != null
+          ? FirebaseFirestore.instance
+                .collection('businesses')
+                .doc(vendorId)
+                .snapshots()
+          : null,
+      builder: (context, snap) {
+        final biz = snap.data?.data() as Map<String, dynamic>? ?? {};
+        final delaySeconds = (biz['thankYouDelaySeconds'] as num?)?.toInt() ?? 8;
+
+        void update(int seconds) {
+          if (vendorId == null) return;
+          FirebaseFirestore.instance
+              .collection('businesses')
+              .doc(vendorId)
+              .update({'thankYouDelaySeconds': seconds});
+        }
+
+        return _Section(
+          title: 'Thank You Notification',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'After scanning a customer, send them a thank-you message after a short delay.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.onSurface,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Currently set to $delaySeconds sec after each scan',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  color: AppColors.onSecondaryContainer,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [8, 9, 10, 11, 12, 13, 14, 15].map((s) {
+                  final selected = delaySeconds == s;
+                  return GestureDetector(
+                    onTap: () => update(s),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppColors.primary
+                            : AppColors.surfaceContainerLowest,
+                        borderRadius: BorderRadius.circular(9999),
+                        border: Border.all(
+                          color: selected
+                              ? AppColors.primary
+                              : AppColors.outline,
+                        ),
+                      ),
+                      child: Text(
+                        '${s}s',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: selected
+                              ? AppColors.onPrimary
+                              : AppColors.onSurface,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
             ],
           ),
         );

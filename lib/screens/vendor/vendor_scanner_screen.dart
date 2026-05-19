@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -87,7 +88,13 @@ class _VendorScannerScreenState extends State<VendorScannerScreen> {
       }
       final String? customerNameFromQr = parts.length > 1 ? parts[1] : null;
 
-      final vendorUid = FirebaseAuth.instance.currentUser!.uid;
+      final vendorUid = FirebaseAuth.instance.currentUser?.uid;
+      if (vendorUid == null) {
+        return const _ScanResult(
+          success: false,
+          message: 'Session expired. Please restart the app and log in again.',
+        );
+      }
       final loyaltyId = '${customerUid}_$vendorUid';
       final loyaltyRef = FirebaseFirestore.instance
           .collection('loyalties')
@@ -173,7 +180,13 @@ class _VendorScannerScreenState extends State<VendorScannerScreen> {
       }
       final String? customerNameFromQr = parts.length > 1 ? parts[1] : null;
 
-      final vendorUid = FirebaseAuth.instance.currentUser!.uid;
+      final vendorUid = FirebaseAuth.instance.currentUser?.uid;
+      if (vendorUid == null) {
+        return const _ScanResult(
+          success: false,
+          message: 'Session expired. Please restart the app and log in again.',
+        );
+      }
 
       // Read business doc for reward config and cooldown settings
       final bizSnap = await FirebaseFirestore.instance
@@ -353,7 +366,79 @@ class _VendorScannerScreenState extends State<VendorScannerScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          MobileScanner(controller: _controller, onDetect: _onDetect),
+          MobileScanner(
+            controller: _controller,
+            onDetect: _onDetect,
+            errorBuilder: (context, error, child) {
+              final isDenied =
+                  error.errorCode == MobileScannerErrorCode.permissionDenied;
+              return Container(
+                color: Colors.black,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          PhosphorIcons.cameraSlash(PhosphorIconsStyle.fill),
+                          color: Colors.white54,
+                          size: 64,
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          isDenied
+                              ? 'Camera access denied'
+                              : 'Camera unavailable',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          isDenied
+                              ? 'BinPerks needs camera access to scan customer QR codes. Tap below to open your phone\'s Settings and allow it.'
+                              : 'Your camera could not be started. Please restart the app and try again.',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white70,
+                            height: 1.55,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        if (isDenied) ...[
+                          const SizedBox(height: 28),
+                          GestureDetector(
+                            onTap: () => Geolocator.openAppSettings(),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 28, vertical: 14),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(9999),
+                              ),
+                              child: Text(
+                                'Open Settings',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
 
           if (_result == null)
             LayoutBuilder(
