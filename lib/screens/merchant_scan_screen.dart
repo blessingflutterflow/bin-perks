@@ -31,6 +31,7 @@ class _MerchantScanScreenState extends State<MerchantScanScreen> {
 
   Timer? _countdownTimer;
   int _remaining = _timerSeconds;
+  bool _expired = false;
   double _previousBrightness = 0.5;
 
   String get _formattedTime {
@@ -80,10 +81,17 @@ class _MerchantScanScreenState extends State<MerchantScanScreen> {
         setState(() => _remaining--);
       } else {
         _countdownTimer?.cancel();
-        setState(() => _remaining = _timerSeconds);
-        _startTimer();
+        setState(() => _expired = true);
       }
     });
+  }
+
+  void _refresh() {
+    setState(() {
+      _expired = false;
+      _remaining = _timerSeconds;
+    });
+    _startTimer();
   }
 
   @override
@@ -163,20 +171,24 @@ class _MerchantScanScreenState extends State<MerchantScanScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: AppColors.primary,
+                            color: _expired
+                                ? AppColors.error
+                                : AppColors.primary,
                             borderRadius: BorderRadius.circular(9999),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                PhosphorIcons.clock(PhosphorIconsStyle.fill),
+                                _expired
+                                    ? PhosphorIcons.warning(PhosphorIconsStyle.fill)
+                                    : PhosphorIcons.clock(PhosphorIconsStyle.fill),
                                 color: AppColors.onPrimary,
                                 size: 12,
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                _formattedTime,
+                                _expired ? 'Expired' : _formattedTime,
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
@@ -190,42 +202,100 @@ class _MerchantScanScreenState extends State<MerchantScanScreen> {
                     ),
                     const SizedBox(height: 20),
                     GestureDetector(
-                      onTap: () async {
-                        await Clipboard.setData(
-                            ClipboardData(text: _qrValue));
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'QR Value copied!',
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                      onTap: _expired
+                          ? _refresh
+                          : () async {
+                              await Clipboard.setData(
+                                  ClipboardData(text: _qrValue));
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'QR Value copied!',
+                                      style: GoogleFonts.plusJakartaSans(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    backgroundColor: AppColors.inverseSurface,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.all(12),
+                            child: ColorFiltered(
+                              colorFilter: _expired
+                                  ? const ColorFilter.matrix([
+                                      0.2126, 0.7152, 0.0722, 0, 0,
+                                      0.2126, 0.7152, 0.0722, 0, 0,
+                                      0.2126, 0.7152, 0.0722, 0, 0,
+                                      0,      0,      0,      1, 0,
+                                    ])
+                                  : const ColorFilter.mode(
+                                      Colors.transparent,
+                                      BlendMode.dst,
+                                    ),
+                              child: QrImageView(
+                                data: _qrValue,
+                                version: QrVersions.auto,
+                                size: 200,
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.black,
                               ),
-                              backgroundColor: AppColors.inverseSurface,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
+                            ),
+                          ),
+                          if (_expired)
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.55),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              duration: const Duration(seconds: 2),
+                              width: 224,
+                              height: 224,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    PhosphorIcons.arrowCounterClockwise(
+                                        PhosphorIconsStyle.bold),
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Expired',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Tap to refresh',
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          );
-                        }
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.all(12),
-                        child: QrImageView(
-                          data: _qrValue,
-                          version: QrVersions.auto,
-                          size: 200,
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                        ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 20),

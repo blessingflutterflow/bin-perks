@@ -7,6 +7,7 @@ import 'vendor_dashboard_screen.dart';
 import 'vendor_scanner_screen.dart';
 import 'vendor_billing_screen.dart';
 import 'vendor_profile_screen.dart';
+import 'vendor_promotions_screen.dart';
 
 class VendorShell extends StatefulWidget {
   const VendorShell({super.key});
@@ -20,23 +21,46 @@ class _VendorShellState extends State<VendorShell> {
 
   void setTab(int index) => setState(() => _currentIndex = index);
 
-  Widget get _screen => switch (_currentIndex) {
-        1 => const VendorScannerScreen(),
-        2 => const VendorBillingScreen(),
-        3 => const VendorProfileScreen(),
-        _ => VendorDashboardScreen(
-            onScanTap: () => setTab(1),
-          ),
+  // Maps the 4-tab index to the 3-slot IndexedStack index,
+  // skipping slot 1 (scanner) which lives outside the stack.
+  int get _stackIndex => switch (_currentIndex) {
+        2 => 1,
+        3 => 2,
+        4 => 3,
+        _ => 0,
       };
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: true,
-      body: _screen,
-      bottomNavigationBar: _VendorBottomNav(
-        currentIndex: _currentIndex,
-        onTap: setTab,
+    return PopScope(
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          setState(() => _currentIndex = 0);
+        }
+      },
+      child: Scaffold(
+        extendBody: true,
+        body: Stack(
+          children: [
+            // Dashboard, Billing, Profile stay alive in memory.
+            IndexedStack(
+              index: _stackIndex,
+              children: [
+                VendorDashboardScreen(onScanTap: () => setTab(1)),
+                const VendorBillingScreen(),
+                const VendorProfileScreen(),
+                const VendorPromotionsScreen(),
+              ],
+            ),
+            // Scanner mounts/unmounts so the camera starts and stops correctly.
+            if (_currentIndex == 1) const VendorScannerScreen(),
+          ],
+        ),
+        bottomNavigationBar: _VendorBottomNav(
+          currentIndex: _currentIndex,
+          onTap: setTab,
+        ),
       ),
     );
   }
@@ -108,6 +132,14 @@ class _VendorBottomNav extends StatelessWidget {
                         PhosphorIcons.user(PhosphorIconsStyle.fill),
                     isActive: currentIndex == 3,
                     onTap: () => onTap(3),
+                  ),
+                  _NavItem(
+                    label: 'Promote',
+                    icon: PhosphorIcons.megaphone(),
+                    activeIcon:
+                        PhosphorIcons.megaphone(PhosphorIconsStyle.fill),
+                    isActive: currentIndex == 4,
+                    onTap: () => onTap(4),
                   ),
                 ],
               ),

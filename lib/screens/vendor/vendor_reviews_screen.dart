@@ -88,8 +88,23 @@ class _VendorReviewsScreenState extends State<VendorReviewsScreen> {
                   .orderBy('createdAt', descending: true)
                   .snapshots(),
               builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
+                if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
                   return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                }
+                if (snap.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Error loading reviews:\n${snap.error}\n\nCreate a Firestore composite index:\ncollection=reviews, fields=businessId(asc)+createdAt(desc)',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: AppColors.error,
+                        ),
+                      ),
+                    ),
+                  );
                 }
 
                 final docs = snap.data?.docs ?? [];
@@ -101,14 +116,67 @@ class _VendorReviewsScreenState extends State<VendorReviewsScreen> {
                   padding: const EdgeInsets.all(16),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
-                    final d = docs[index].data() as Map<String, dynamic>;
+                    final doc = docs[index];
+                    final d = doc.data() as Map<String, dynamic>;
                     final rating = (d['rating'] as num?)?.toInt() ?? 2;
                     final ts = d['createdAt'] as Timestamp?;
                     final comment = d['comment'] as String?;
                     final customerName = d['customerName'];
                     final customerId = (d['customerId'] ?? d['uid'] ?? d['userId'] ?? '') as String;
 
-                    return Container(
+                    return Dismissible(
+                      key: Key(doc.id),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: AppColors.error,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(PhosphorIcons.trash(PhosphorIconsStyle.fill),
+                            color: Colors.white, size: 22),
+                      ),
+                      confirmDismiss: (_) async {
+                        return await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
+                            title: Text('Delete review?',
+                                style: GoogleFonts.plusJakartaSans(
+                                    fontWeight: FontWeight.w800, fontSize: 16)),
+                            content: Text(
+                                'This will permanently remove this review from your archive.',
+                                style: GoogleFonts.beVietnamPro(fontSize: 14)),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: Text('Cancel',
+                                    style: GoogleFonts.beVietnamPro(
+                                        fontWeight: FontWeight.w700)),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: Text('Delete',
+                                    style: GoogleFonts.beVietnamPro(
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.error)),
+                              ),
+                            ],
+                          ),
+                        ) ?? false;
+                      },
+                      onDismissed: (_) async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        await doc.reference.delete();
+                        messenger.showSnackBar(const SnackBar(
+                          content: Text('Review deleted'),
+                          behavior: SnackBarBehavior.floating,
+                        ));
+                      },
+                      child: Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -175,12 +243,30 @@ class _VendorReviewsScreenState extends State<VendorReviewsScreen> {
                                 ),
                               ),
                               if (ts != null)
-                                Text(
-                                  DateFormat('d MMM, HH:mm').format(ts.toDate()),
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 11,
-                                    color: AppColors.onSecondaryContainer.withOpacity(0.5),
-                                  ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      DateFormat('d MMM, HH:mm')
+                                          .format(ts.toDate()),
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 11,
+                                        color: AppColors.onSecondaryContainer
+                                            .withOpacity(0.5),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '← Swipe to delete',
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.onSecondaryContainer
+                                            .withOpacity(0.5),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                             ],
                           ),
@@ -204,6 +290,7 @@ class _VendorReviewsScreenState extends State<VendorReviewsScreen> {
                             ),
                           ],
                         ],
+                      ),
                       ),
                     );
                   },

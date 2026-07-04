@@ -20,6 +20,7 @@ service cloud.firestore {
     // or vendors (FCM tokens and emails stay private).
     match /users/{userId} {
       allow read: if isAuthenticated();
+      allow list: if isAdmin();
       allow write: if request.auth.uid == userId || isAdmin();
     }
 
@@ -54,22 +55,33 @@ service cloud.firestore {
         request.auth.uid == request.resource.data.customerId
       );
       allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.businessId || isAdmin() ||
+        (request.auth.uid == resource.data.customerId &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['canRate']))
+      );
+      // Vendor removes a customer's loyalty record (By Customer archive cleanup).
+      allow delete: if isAuthenticated() && (
         request.auth.uid == resource.data.businessId || isAdmin()
       );
-      allow delete: if isAdmin();
     }
 
     // ── Stamps ────────────────────────────────────────────────────
     // Individual stamp event records (activity feed + audit trail).
     // Only the vendor who issued the stamp can create records.
     match /stamps/{stampId} {
-      allow read: if isAuthenticated() && (
+      allow get: if isAuthenticated() && (
         request.auth.uid == resource.data.customerId ||
         request.auth.uid == resource.data.vendorId ||
         isAdmin()
       );
+      allow list: if isAuthenticated();
       allow create: if isAuthenticated() &&
         request.auth.uid == request.resource.data.vendorId;
+      // Vendor can delete their own stamp records (History Archive cleanup).
+      allow delete: if isAuthenticated() && (
+        request.auth.uid == resource.data.vendorId || isAdmin()
+      );
     }
 
     // ── Rewards ───────────────────────────────────────────────────
@@ -93,13 +105,20 @@ service cloud.firestore {
     // Customer reads their own history (profile reward history screen).
     // Vendor reads their business's redemptions (dashboard activity feed).
     match /redemptions/{redId} {
-      allow read: if isAuthenticated() && (
-        request.auth.uid == resource.data.customerId ||
-        request.auth.uid == resource.data.vendorId ||
+      allow get: if isAuthenticated() && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.vendorId == request.auth.uid ||
         isAdmin()
       );
+      allow list: if isAuthenticated();
       allow create: if isAuthenticated() &&
         request.auth.uid == request.resource.data.vendorId;
+      // Customer clears their own reward archive; vendor clears their business's.
+      allow delete: if isAuthenticated() && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.vendorId == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     // ── Reviews ───────────────────────────────────────────────────
@@ -119,8 +138,27 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['flagged', 'flaggedAt']))
       );
+      // Admin, the original customer, or the business owner can delete
+      // (vendor Reviews Archive cleanup).
       allow delete: if isAdmin() ||
-        (isAuthenticated() && request.auth.uid == resource.data.customerId);
+        (isAuthenticated() && (
+          request.auth.uid == resource.data.customerId ||
+          request.auth.uid == resource.data.businessId
+        ));
+    }
+
+    // ── Promotions ────────────────────────────────────────────────
+    // Written exclusively by the sendPromotion Cloud Function (admin SDK
+    // bypasses these rules). Vendor reads/deletes their own promotion
+    // history; admin reads all. Direct client writes are blocked.
+    match /promotions/{promoId} {
+      allow get, list: if isAuthenticated() && (
+        resource.data.businessId == request.auth.uid || isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.businessId == request.auth.uid || isAdmin()
+      );
+      allow create, update: if false;
     }
 
     // ── Payments ─────────────────────────────────────────────────
@@ -128,9 +166,10 @@ service cloud.firestore {
     // Vendors can read their own payment history; admin reads all.
     // Client-side writes are blocked entirely.
     match /payments/{paymentId} {
-      allow read: if isAuthenticated() && (
+      allow get: if isAuthenticated() && (
         request.auth.uid == resource.data.businessId || isAdmin()
       );
+      allow list: if isAdmin();
       allow write: if false;
     }
 
@@ -148,6 +187,13 @@ service cloud.firestore {
     match /auditLogs/{logId} {
       allow read: if isAdmin();
       allow write: if isAdmin();
+    }
+
+    // ── Scheduled Notifications ───────────────────────────────────
+    // Written and processed exclusively by Cloud Functions (admin SDK
+    // bypasses these rules). No client-side access permitted.
+    match /scheduledNotifications/{docId} {
+      allow read, write: if false;
     }
   }
 }

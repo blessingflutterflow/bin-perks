@@ -28,16 +28,6 @@ class VendorDashboardScreen extends StatelessWidget {
     return 'Good evening';
   }
 
-  String _trend(int current, int previous) {
-    if (previous == 0) return current > 0 ? '↑ new' : '—';
-    final pct = ((current - previous) / previous * 100).round();
-    return pct >= 0 ? '↑ $pct%' : '↓ ${pct.abs()}%';
-  }
-
-  Color _trendColor(int current, int previous) {
-    if (previous == 0) return AppColors.onSecondaryContainer;
-    return current >= previous ? const Color(0xFF00875A) : AppColors.error;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -219,8 +209,6 @@ class VendorDashboardScreen extends StatelessWidget {
             final now = DateTime.now();
             final todayStart = DateTime(now.year, now.month, now.day);
             final monthStart = DateTime(now.year, now.month, 1);
-            final lastMonthStart = DateTime(now.year, now.month - 1, 1);
-            final lastMonthEnd = monthStart.subtract(const Duration(seconds: 1));
 
             bool inRange(Timestamp? ts, DateTime from, DateTime to) {
               if (ts == null) return false;
@@ -251,18 +239,6 @@ class VendorDashboardScreen extends StatelessWidget {
                 .where((r) => inRange(r['redeemedAt'] as Timestamp?, monthStart, now))
                 .length;
 
-            // Last month (for trend)
-            final stampsLast = stamps
-                .where((s) => inRange(s['createdAt'] as Timestamp?, lastMonthStart, lastMonthEnd))
-                .length;
-            final customersLast = stamps
-                .where((s) => inRange(s['createdAt'] as Timestamp?, lastMonthStart, lastMonthEnd))
-                .map((s) => s['customerId'])
-                .toSet()
-                .length;
-            final redeemsLast = redeems
-                .where((r) => inRange(r['redeemedAt'] as Timestamp?, lastMonthStart, lastMonthEnd))
-                .length;
 
             return Padding(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
@@ -324,22 +300,16 @@ class VendorDashboardScreen extends StatelessWidget {
                         _MonthStat(
                           label: 'Stamps',
                           value: stampsMonth,
-                          trend: _trend(stampsMonth, stampsLast),
-                          trendColor: _trendColor(stampsMonth, stampsLast),
                         ),
                         _Divider(),
                         _MonthStat(
                           label: 'Customers',
                           value: customersMonth,
-                          trend: _trend(customersMonth, customersLast),
-                          trendColor: _trendColor(customersMonth, customersLast),
                         ),
                         _Divider(),
                         _MonthStat(
                           label: 'Redeemed',
                           value: redeemsMonth,
-                          trend: _trend(redeemsMonth, redeemsLast),
-                          trendColor: _trendColor(redeemsMonth, redeemsLast),
                         ),
                       ],
                     ),
@@ -1239,13 +1209,7 @@ class _TodayTile extends StatelessWidget {
 class _MonthStat extends StatelessWidget {
   final String label;
   final int value;
-  final String trend;
-  final Color trendColor;
-  const _MonthStat(
-      {required this.label,
-      required this.value,
-      required this.trend,
-      required this.trendColor});
+  const _MonthStat({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -1262,13 +1226,6 @@ class _MonthStat extends StatelessWidget {
               style: GoogleFonts.beVietnamPro(
                 fontSize: 11,
                 color: AppColors.onSecondaryContainer,
-              )),
-          const SizedBox(height: 2),
-          Text(trend,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: trendColor,
               )),
         ],
       ),
