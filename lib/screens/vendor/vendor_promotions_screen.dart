@@ -80,6 +80,7 @@ class _VendorPromotionsScreenState extends State<VendorPromotionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final vendorId = FirebaseAuth.instance.currentUser?.uid;
     return Scaffold(
       backgroundColor: AppColors.surface,
       body: CustomScrollView(
@@ -97,13 +98,34 @@ class _VendorPromotionsScreenState extends State<VendorPromotionsScreen> {
             ),
           ),
           SliverToBoxAdapter(
-            child: Padding(
+            child: StreamBuilder<DocumentSnapshot>(
+              stream: vendorId == null
+                  ? null
+                  : FirebaseFirestore.instance
+                      .collection('businesses')
+                      .doc(vendorId)
+                      .snapshots(),
+              builder: (context, bizSnap) {
+                final bizData = bizSnap.data?.data() as Map<String, dynamic>?;
+                final promoEnabled = bizData?['promotionsEnabled'] != false;
+                final promoReason =
+                    bizData?['promotionsDisabledReason'] as String? ?? '';
+                return Padding(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Disabled-by-admin banner ─────────────────────
+                  if (!promoEnabled) ...[
+                    _DisabledBanner(reason: promoReason),
+                    const SizedBox(height: 16),
+                  ],
                   // ── Compose card ─────────────────────────────────
-                  Container(
+                  Opacity(
+                    opacity: promoEnabled ? 1 : 0.5,
+                    child: IgnorePointer(
+                      ignoring: !promoEnabled,
+                      child: Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -294,6 +316,8 @@ class _VendorPromotionsScreenState extends State<VendorPromotionsScreen> {
                       ],
                     ),
                   ),
+                    ),
+                  ),
 
                   const SizedBox(height: 28),
 
@@ -312,6 +336,8 @@ class _VendorPromotionsScreenState extends State<VendorPromotionsScreen> {
                   const SizedBox(height: 120),
                 ],
               ),
+                );
+              },
             ),
           ),
         ],
@@ -568,6 +594,92 @@ class _PromotionHistory extends StatelessWidget {
           }).toList(),
         );
       },
+    );
+  }
+}
+
+// ── Admin-disabled banner ─────────────────────────────────────────────
+
+class _DisabledBanner extends StatelessWidget {
+  final String reason;
+  const _DisabledBanner({required this.reason});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(PhosphorIcons.prohibit(PhosphorIconsStyle.fill),
+              color: AppColors.error, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Promotions disabled by the administrator',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.error,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'You cannot send new promotions right now. Your past promotions are still shown below.',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12.5,
+                    height: 1.4,
+                    color: AppColors.onSurface,
+                  ),
+                ),
+                if (reason.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'REASON',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1,
+                            color: AppColors.onSecondaryContainer,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          reason,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            height: 1.4,
+                            color: AppColors.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

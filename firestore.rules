@@ -30,7 +30,19 @@ service cloud.firestore {
     match /businesses/{bizId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.auth.uid == bizId;
-      allow update: if (isAuthenticated() && request.auth.uid == bizId) || isAdmin();
+      // Admin can change anything. The owning vendor can update their own
+      // business EXCEPT the admin-controlled promotions fields — that keeps a
+      // vendor from re-enabling promotions the admin has switched off.
+      allow update: if isAdmin() || (
+        isAuthenticated() && request.auth.uid == bizId &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny([
+            'promotionsEnabled',
+            'promotionsDisabledReason',
+            'promotionsUpdatedAt',
+            'promotionsUpdatedBy'
+          ])
+      );
       allow delete: if isAdmin();
     }
 

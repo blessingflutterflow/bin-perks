@@ -1,4 +1,4 @@
-const { onRequest, onCall } = require("firebase-functions/v2/https");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentUpdated, onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
@@ -282,6 +282,20 @@ exports.sendPromotion = onCall(async (request) => {
   const { businessId, title, message } = request.data;
   if (!businessId || !title || !message) throw new Error("Missing required fields");
   if (uid !== businessId) throw new Error("Unauthorized");
+
+  // Admin control gate — refuse to send if promotions are disabled for this
+  // vendor. Enforced here (not just in the app) so it can't be bypassed.
+  const bizSnap = await admin.firestore()
+    .collection("businesses").doc(businessId).get();
+  if (bizSnap.exists && bizSnap.data().promotionsEnabled === false) {
+    const reason = bizSnap.data().promotionsDisabledReason;
+    throw new HttpsError(
+      "permission-denied",
+      reason && reason.length > 0
+        ? `Promotions disabled by administrator: ${reason}`
+        : "Promotions have been disabled by the administrator."
+    );
+  }
 
   // Find all loyalty customers for this business
   const loyaltiesSnap = await admin.firestore()
